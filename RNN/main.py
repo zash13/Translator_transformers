@@ -64,13 +64,13 @@ class RnnModel:
         return " ".join(idx2word[idx] for idx in generated)
 
 
-data = """ The meeting of Diogenes of Sinope and Alexander the Great is one of the most discussed anecdotes from philosophical history. Many versions of it exist. The most popular relate it as evidence of Diogenes """
+data = """ The meeting of Diogenes of Sinope and Alexander the Great is one of the most discussed anecdotes from philosophical history. Many versions of it exist. The most popular relate it as evidence of Diogenes' disregard for authority, wealth, and decorum.[1]Plutarch and Diogenes Laërtius report that Alexander and Diogenes died on the same day,"""
 tokens = []
-for sentence in data:
-    for word in sentence.split():
-        clean = re.sub(r"[,\!\?\(\):]", "", word.lower())
-        if clean:
-            tokens.append(clean)
+for sentence in data.split():
+    clean = re.sub(r"[,\!\?\(\):]", "", sentence.lower())
+    if clean:
+        tokens.append(clean)
+        print(clean)
 
 special_tokens = {
     "<#START>": 0,
@@ -117,6 +117,7 @@ seed_text = [
     "anecdotes",
     "from",
     "philosophical",
+    "history",
 ]
 
 seed_tokens = [word2idx.get(w, word2idx["<#UNKNOWN>"]) for w in seed_text]
