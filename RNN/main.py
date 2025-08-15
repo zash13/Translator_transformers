@@ -97,27 +97,6 @@ y = np.array(y)
 rnn_model = RnnModel(SEQUENCE_LEN, vocab_size, RNN_LAYER_DIM, EMBEDDING_DIM)
 rnn_model.fit(X, y, epochs=EPOCHS, batch_size=BATCH_SIZE)
 
-
-def generate(self, seed_tokens, idx2word, max_length=50):
-    """
-    seed_tokens: list[int] - starting token IDs, length must be SEQUENCE_LEN
-    idx2word: dict[int, str] - mapping from token IDs to words
-    """
-    generated = list(seed_tokens)
-
-    for _ in range(max_length):
-        x_input = np.array([generated[-SEQUENCE_LEN:]])
-        pred_probs = self._model.predict(x_input, verbose=0)[0]
-        next_id = np.argmax(pred_probs)
-
-        generated.append(next_id)
-
-        if idx2word[next_id] == "<#END>":
-            break
-
-    return " ".join(idx2word[idx] for idx in generated)
-
-
 seed_text = [
     "the",
     "meeting",
