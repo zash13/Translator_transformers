@@ -44,6 +44,25 @@ class RnnModel:
     def set_weights(self, weights):
         self._model.set_weights(weights)
 
+    def generate(self, seed_tokens, idx2word, max_length=50):
+        """
+        seed_tokens: list[int] - starting token IDs, length must be SEQUENCE_LEN
+        idx2word: dict[int, str] - mapping from token IDs to words
+        """
+        generated = list(seed_tokens)
+
+        for _ in range(max_length):
+            x_input = np.array([generated[-SEQUENCE_LEN:]])
+            pred_probs = self._model.predict(x_input, verbose=0)[0]
+            next_id = np.argmax(pred_probs)
+
+            generated.append(next_id)
+
+            if idx2word[next_id] == "<#END>":
+                break
+
+        return " ".join(idx2word[idx] for idx in generated)
+
 
 data = """ The meeting of Diogenes of Sinope and Alexander the Great is one of the most discussed anecdotes from philosophical history. Many versions of it exist. The most popular relate it as evidence of Diogenes """
 tokens = []
@@ -77,3 +96,50 @@ X = np.array(X)
 y = np.array(y)
 rnn_model = RnnModel(SEQUENCE_LEN, vocab_size, RNN_LAYER_DIM, EMBEDDING_DIM)
 rnn_model.fit(X, y, epochs=EPOCHS, batch_size=BATCH_SIZE)
+
+
+def generate(self, seed_tokens, idx2word, max_length=50):
+    """
+    seed_tokens: list[int] - starting token IDs, length must be SEQUENCE_LEN
+    idx2word: dict[int, str] - mapping from token IDs to words
+    """
+    generated = list(seed_tokens)
+
+    for _ in range(max_length):
+        x_input = np.array([generated[-SEQUENCE_LEN:]])
+        pred_probs = self._model.predict(x_input, verbose=0)[0]
+        next_id = np.argmax(pred_probs)
+
+        generated.append(next_id)
+
+        if idx2word[next_id] == "<#END>":
+            break
+
+    return " ".join(idx2word[idx] for idx in generated)
+
+
+seed_text = [
+    "the",
+    "meeting",
+    "of",
+    "diogenes",
+    "of",
+    "sinope",
+    "and",
+    "alexander",
+    "the",
+    "great",
+    "is",
+    "one",
+    "of",
+    "the",
+    "most",
+    "discussed",
+    "anecdotes",
+    "from",
+    "philosophical",
+]
+
+seed_tokens = [word2idx.get(w, word2idx["<#UNKNOWN>"]) for w in seed_text]
+
+print(rnn_model.generate(seed_tokens, idx2word, max_length=30))
