@@ -7,6 +7,8 @@ from collections import defaultdict
 SEQUENCE_LEN = 20
 EMBEDDING_DIM = 100
 RNN_LAYER_DIM = 100
+EPOCHS = 100
+BATCH_SIZE = 8
 
 
 class RnnModel:
@@ -58,6 +60,7 @@ special_tokens = {
     "<#END>": 3,
 }
 vocab = sorted(set(tokens))
+vocab_size = len(vocab)
 start_index = len(special_tokens)
 word2idx = {word: idx + start_index for idx, word in enumerate(vocab)}
 word2idx = {**special_tokens, **word2idx}
@@ -72,3 +75,5 @@ for i in range(len(token_ids) - SEQUENCE_LEN):
 
 X = np.array(X)
 y = np.array(y)
+rnn_model = RnnModel(SEQUENCE_LEN, vocab_size, RNN_LAYER_DIM, EMBEDDING_DIM)
+rnn_model.fit(X, y, epochs=EPOCHS, batch_size=BATCH_SIZE)
