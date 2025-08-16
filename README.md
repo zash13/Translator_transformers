@@ -15,3 +15,12 @@ https://www.youtube.com/watch?v=YCzL96nL7j0
 
 RNN vs LSTM vs GRU vs Transformers
 https://www.geeksforgeeks.org/deep-learning/rnn-vs-lstm-vs-gru-vs-transformers/
+
+transformers in machine learning
+https://www.geeksforgeeks.org/machine-learning/getting-started-with-transformers/
+
+text_classification_with_transformer
+https://keras.io/examples/nlp/text_classification_with_transformer/
+
+difference between self-attention and attention
+https://medium.com/@wwydmanski/whats-the-difference-between-self-attention-and-attention-in-transformer-architecture-3780404382f3
