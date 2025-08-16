@@ -4,7 +4,7 @@ import numpy as np
 import re
 from collections import defaultdict
 
-SEQUENCE_LEN = 20
+SEQUENCE_LEN = 50
 EMBEDDING_DIM = 100
 RNN_LAYER_DIM = 30
 EPOCHS = 100
@@ -19,6 +19,9 @@ class RnnModel:
     def _build_model(self, seq_len, vocab_size, h1_dim, embedding_dim):
         input = keras.Input(shape=(seq_len,), dtype="int32")
         embedding = keras.layers.Embedding(vocab_size, embedding_dim)(input)
+        # You can replace SimpleRNN with LSTM or GRU for potentially better performance.
+        # If you switch to LSTM, try experimenting with different values of SEQUENCE_LEN.
+        # Interestingly, changing the sequence length can significantly affect the learning curve and loss behavior.
         rnn_layer = keras.layers.SimpleRNN(h1_dim)(embedding)
         output = keras.layers.Dense(vocab_size, activation="softmax")(rnn_layer)
         model = keras.Model(inputs=input, outputs=output)
