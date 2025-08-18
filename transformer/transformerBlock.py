@@ -33,7 +33,7 @@ class TransformerBlock(layers.Layer):
         self.dropout1 = layers.Dropout(rate)
         self.dropout2 = layers.Dropout(rate)
 
-    def feedforward(self, inputs):
+    def call(self, inputs):
         # if you not get this part to , read articles about differece between self attention and attention( i think so )
         # i think in self attention , each token look at all tokens including itself , so query = key = value = input
         # while in attention it self , we have Q and V and K

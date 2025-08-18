@@ -18,14 +18,15 @@ def positional_encoding(position, d_model):
     return tf.cast(pos_encoding, dtype=tf.float32)
 
 
-position = 10
-d_model = 8
-pos_encoding = positional_encoding(position, d_model)
+def test():
+    position = 10
+    d_model = 8
+    pos_encoding = positional_encoding(position, d_model)
 
-print("Shape:", pos_encoding.shape)
-print("Values:\n", pos_encoding.numpy()[0, :, :])
+    print("Shape:", pos_encoding.shape)
+    print("Values:\n", pos_encoding.numpy()[0, :, :])
 
-plt.matshow(pos_encoding[0].numpy())
-plt.colorbar()
-plt.title("Positional Encoding (pos=10, d_model=8)")
-plt.show()
+    plt.matshow(pos_encoding[0].numpy())
+    plt.colorbar()
+    plt.title("Positional Encoding (pos=10, d_model=8)")
+    plt.show()
