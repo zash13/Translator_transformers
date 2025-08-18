@@ -1,26 +1,23 @@
-Introduction to Recurrent Neural Networks
-https://www.geeksforgeeks.org/machine-learning/introduction-to-recurrent-neural-network/
+# Recurrent Neural Networks (RNN) and Transformers – Resource Guide
 
-Back Propagation through time - RNN
-https://www.geeksforgeeks.org/machine-learning/ml-back-propagation-through-time/
+## RNN Basics
 
-Vanishing and Exploding Gradients Problems in Deep Learning
-https://www.geeksforgeeks.org/deep-learning/vanishing-and-exploding-gradients-problems-in-deep-learningLSTM rnn/
-utube.com/watch?v=wgfSDrqYMJ4 H
-What is LSTM (Long Short Term Memory)?
-https://www.youtube.com/watch?v=b61DPVFX03I
+- [Introduction to Recurrent Neural Networks](https://www.geeksforgeeks.org/machine-learning/introduction-to-recurrent-neural-network/)
+- [Backpropagation Through Time in RNNs](https://www.geeksforgeeks.org/machine-learning/ml-back-propagation-through-time/)
+- [Vanishing and Exploding Gradients in Deep Learning](https://www.geeksforgeeks.org/deep-learning/vanishing-and-exploding-gradients-problems-in-deep-learning)
 
-long shot-term memory , clearly explained :
-https://www.youtube.com/watch?v=YCzL96nL7j0
+## LSTM (Long Short-Term Memory)
 
-RNN vs LSTM vs GRU vs Transformers
-https://www.geeksforgeeks.org/deep-learning/rnn-vs-lstm-vs-gru-vs-transformers/
+- [What is LSTM?](https://www.youtube.com/watch?v=b61DPVFX03I)
+- [LSTM Explained Clearly](https://www.youtube.com/watch?v=YCzL96nL7j0)
+- [LSTM RNN Overview](https://www.youtube.com/watch?v=wgfSDrqYMJ4)
 
-transformers in machine learning
-https://www.geeksforgeeks.org/machine-learning/getting-started-with-transformers/
+## Comparative Architectures
 
-text_classification_with_transformer
-https://keras.io/examples/nlp/text_classification_with_transformer/
+- [RNN vs LSTM vs GRU vs Transformers](https://www.geeksforgeeks.org/deep-learning/rnn-vs-lstm-vs-gru-vs-transformers/)
 
-difference between self-attention and attention
-https://medium.com/@wwydmanski/whats-the-difference-between-self-attention-and-attention-in-transformer-architecture-3780404382f3
+## Transformers
+
+- [Introduction to Transformers in Machine Learning](https://www.geeksforgeeks.org/machine-learning/getting-started-with-transformers/)
+- [Text Classification with Transformers (Keras)](https://keras.io/examples/nlp/text_classification_with_transformer/)
+- [Self-Attention vs Attention in Transformers](https://medium.com/@wwydmanski/whats-the-difference-between-self-attention-and-attention-in-transformer-architecture-3780404382f3)

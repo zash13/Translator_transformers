@@ -14,6 +14,27 @@ class preprocessing(layers.Layer):
         self.pos_encoding = positional_encoding(max_len, embedding_dim)
 
     def call(self, input, scale_factor=10):
+        """
+        Applies token embedding and positional encoding to the input sequence.
+        Parameters:
+        ----------
+        input : tf.Tensor
+            A 2D integer tensor of shape (batch_size, sequence_length), where each value
+            represents a token ID from the vocabulary. This tensor is passed through an
+            embedding layer to obtain dense vector representations.
+        scale_factor : float or tf.Tensor, optional (default=10)
+            A scalar used to scale the token embeddings before adding positional encodings.
+            This helps balance the magnitude between token embeddings and positional encodings.
+            Typically set to sqrt(embedding_dim) to match Transformer best practices.
+            Example:
+                scale_factor = tf.math.sqrt(tf.cast(embedding_dim, tf.float32))
+        Returns:
+        -------
+        tf.Tensor
+            A 3D tensor of shape (batch_size, sequence_length, embedding_dim) containing
+            the sum of scaled token embeddings and positional encodings. This output is
+            suitable for input into Transformer layers.
+        """
         seq_len = tf.shape(input)[1]
         # update 1 : after running the model , seems that positional encoding have much larger magitudes then my embedding (this find out by ai , i am too far from this vitions)
         # 391/391 ━━━━━━━━━━━━━━━━━━━━ 56s 140ms/step - accuracy: 0.5101 - loss: 0.6973 - val_accuracy: 0.5000 - val_loss: 0.6915
