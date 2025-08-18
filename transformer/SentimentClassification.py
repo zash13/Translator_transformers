@@ -34,7 +34,11 @@ outputs = layers.Dense(1, activation="sigmoid")(x)
 
 model = keras.Model(inputs=inputs, outputs=outputs)
 
-model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+model.compile(
+    optimizer=keras.optimizers.Adam(),
+    loss="binary_crossentropy",
+    metrics=["accuracy"],
+)
 model.summary()
 history = model.fit(
     x_train, y_train, batch_size=64, epochs=2, validation_data=(x_val, y_val)
