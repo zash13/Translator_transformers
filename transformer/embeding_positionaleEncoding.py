@@ -1,4 +1,4 @@
-from positionalEncoding import positional_encoding
+from PositionalEncoding import positional_encoding
 import keras
 from keras import layers
 import tensorflow as tf
@@ -13,7 +13,7 @@ class preprocessing(layers.Layer):
         self.embedding_dim = embedding_dim
         self.pos_encoding = positional_encoding(max_len, embedding_dim)
 
-    def call(self, input, scale_factor=10):
+    def call(self, input):
         """
         Applies token embedding and positional encoding to the input sequence.
         Parameters:
@@ -43,9 +43,10 @@ class preprocessing(layers.Layer):
         # so it get overwhelm the toekn embedding , i cahnge it from
         # input = self.embedding(input)
         # to
-        input = (
-            self.embedding(input) * scale_factor
-        )  # basicly i multiply the embedding number in sqrt of embedding_dim , like sqrt(100) , which not right but it work
+        # update 2 : base on attention paper ,
+        input = self.embedding(input)
+        input *= tf.sqrt(tf.cast(self.embedding_dim, tf.float32))
+        # basicly i multiply the embedding number in sqrt of embedding_dim , like sqrt(100) , which not right but it work
         # this will give me only first seq_len element in pos_encoding , like its shape is (1 , max_len ,embedding_dim) for exmaple  (1 , 5000 , 100)
         # if i have sentence the each have 4 token , i get first 4 pos_encoding , add them to embedding and give them to transformer_box
         positions = self.pos_encoding[:, :seq_len, :]
