@@ -23,4 +23,8 @@
 - [Self-Attention vs Attention in Transformers](https://medium.com/@wwydmanski/whats-the-difference-between-self-attention-and-attention-in-transformer-architecture-3780404382f3)
 - [BERT paper](https://arxiv.org/pdf/1810.04805)
 
-  https://tinkerd.net/blog/machine-learning/bert-embeddings/
+- [bert Embeddings how it work ](https://tinkerd.net/blog/machine-learning/bert-embeddings/)
+
+## DATASET
+
+- [Quora Question Pairs - kaggle ](https://www.kaggle.com/competitions/quora-question-pairs/data)
