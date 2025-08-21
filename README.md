@@ -24,7 +24,9 @@
 - [BERT paper](https://arxiv.org/pdf/1810.04805)
 
 - [bert Embeddings how it work ](https://tinkerd.net/blog/machine-learning/bert-embeddings/)
+- [bert fine tuning](https://reintech.io/blog/fine-tuning-bert-text-classification-tensorflow?utm_source=chatgpt.com)
 
 ## DATASET
 
 - [Quora Question Pairs - kaggle ](https://www.kaggle.com/competitions/quora-question-pairs/data)
+- [2,225 news articles published by BBC News - kaggle ](https://www.kaggle.com/datasets/moazeldsokyx/bbc-news/data)
