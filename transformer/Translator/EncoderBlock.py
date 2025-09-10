@@ -7,9 +7,10 @@ from keras import layers
 class EncoderBlock(layers.Layer):
     def __init__(self, embeding_dim, num_heads, feadForward_dim, rate=0.1):
         super().__init__()
-        self.self_attention = TransformerBlock(
-            embeding_dim, num_heads, feadForward_dim, rate=0.1
+
+        self.encoderBlock = TransformerBlock(
+            embeding_dim, num_heads, feadForward_dim, rate=rate
         )
 
     def call(self, input):
-        self.self_attention.call(input)
+        return self.encoderBlock.call(input)
