@@ -15,7 +15,7 @@ class EncoderStack(layers.Layer):
         ]
 
     def call(self, inputs):
-        x = input
+        x = inputs
         for layer in self.encoder_stack:
             x = layer(x)
         return x
