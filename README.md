@@ -30,3 +30,7 @@
 
 - [Quora Question Pairs - kaggle ](https://www.kaggle.com/competitions/quora-question-pairs/data)
 - [2,225 news articles published by BBC News - kaggle ](https://www.kaggle.com/datasets/moazeldsokyx/bbc-news/data)
+
+## TRANSLATORS
+
+- [how transformers work ](https://www.datacamp.com/tutorial/how-transformers-work)
