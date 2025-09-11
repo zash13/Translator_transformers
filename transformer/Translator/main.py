@@ -1,8 +1,9 @@
-import keras as ks
 import numpy as np
 import pandas as pd
-from TokenEmbedding import TokenEmbedding
+import tensorflow as tf
+import keras as ks
 from PositionalEncoding import positional_encoding
+from TokenEmbedding import TokenEmbedding
 from EncoderStack import EncoderStack
 from DecoderStack import DecoderStack
 
@@ -35,24 +36,66 @@ class Translator(ks.Model):
 
     def call(self, inputs, training=True):
         enc_inputs, dec_inputs = inputs  # Expect [encoder_input, decoder_input]
-
-        # Create masks
+        """
         enc_padding_mask = self.create_padding_mask(enc_inputs)
         dec_padding_mask = self.create_padding_mask(dec_inputs)
         look_ahead_mask = self.create_look_ahead_mask(tf.shape(dec_inputs)[1])
-        # Combine look-ahead and padding mask for decoder self-attention
         dec_self_mask = tf.maximum(dec_padding_mask, look_ahead_mask)
-
-        # Encoder path: embed + positional encoding
+        """
         enc_emb = self.encoder_embedding(enc_inputs)
         enc_emb += self.positional_encoding[:, : tf.shape(enc_emb)[1], :]
-        enc_output = self.encoder(enc_emb, enc_padding_mask)
+        enc_output = self.encoder(enc_emb)
 
-        # Decoder path: embed + positional encoding
         dec_emb = self.decoder_embedding(dec_inputs)
         dec_emb += self.positional_encoding[:, : tf.shape(dec_emb)[1], :]
-        dec_output = self.decoder(dec_emb, enc_output, dec_self_mask, enc_padding_mask)
 
-        # Final output
+        dec_output = self.decoder(dec_emb, enc_output)
+
         final_output = self.final_layer(dec_output)
         return final_output
+
+    def create_padding_mask(self, seq):
+        mask = tf.cast(tf.math.equal(seq, 0), tf.float32)
+        return mask[:, tf.newaxis, tf.newaxis, :]
+
+    def create_look_ahead_mask(self, size):
+        mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
+        return mask
+
+
+def test():
+    num_layers = 2
+    embedding_dim = 128
+    num_heads = 4
+    feed_forward_dim = 512
+    input_vocab_size = 1000
+    target_vocab_size = 1000
+    max_sequence_length = 20
+    batch_size = 64
+    seq_len = 10
+
+    enc_inputs = tf.random.uniform(
+        (batch_size, seq_len), maxval=input_vocab_size, dtype=tf.int32
+    )
+    dec_inputs = tf.random.uniform(
+        (batch_size, seq_len), maxval=target_vocab_size, dtype=tf.int32
+    )
+
+    # Initialize model
+    model = Translator(
+        num_layers,
+        embedding_dim,
+        num_heads,
+        feed_forward_dim,
+        input_vocab_size,
+        target_vocab_size,
+        max_sequence_length,
+    )
+
+    output = model([enc_inputs, dec_inputs])
+    print("Input shapes:", enc_inputs.shape, dec_inputs.shape)
+    print("Output shape:", output.shape)
+
+
+if __name__ == "__main__":
+    test()
