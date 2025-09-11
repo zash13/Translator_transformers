@@ -39,12 +39,12 @@ class DecoderBlock(layers.Layer):
         attention_output_0 = self.dropout_0(attention_output_0)
         out_0 = self.layernorm_0(inputs + attention_output_0)
 
-        attention_output_1 = self.attention_layer_1(
+        attention_output_1 = self.encoder_decoder_attentions(
             query=out_0, value=enc_output, key=enc_output, attention_mask=padding_mask
         )
         attention_output_1 = self.dropout_1(attention_output_1)
         out_1 = self.layernorm_1(out_0 + attention_output_1)
 
-        ffn_output = self.feedforward_network(out_1)
+        ffn_output = self.feedforward_network_0(out_1)
         ffn_output = self.dropout_2(ffn_output)
         return self.layernorm_2(out_1 + ffn_output)

@@ -16,6 +16,6 @@ class DecoderStack(layers.Layer):
 
     def call(self, inputs, enc_output, look_ahead_mask=None, padding_mask=None):
         x = inputs
-        for layer in self.decoder_layers:
+        for layer in self.decoder_stack:
             x = layer(x, enc_output, look_ahead_mask, padding_mask)
         return x
