@@ -30,6 +30,7 @@
 
 - [Quora Question Pairs - kaggle ](https://www.kaggle.com/competitions/quora-question-pairs/data)
 - [2,225 news articles published by BBC News - kaggle ](https://www.kaggle.com/datasets/moazeldsokyx/bbc-news/data)
+- [europarl dataset , i use parallel corpus French-English ](https://www.statmt.org/europarl/)
 
 ## TRANSLATORS
 
