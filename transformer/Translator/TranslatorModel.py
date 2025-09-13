@@ -1,12 +1,11 @@
 import tensorflow as tf
-import keras as ks
 from TokenEmbedding import TokenEmbedding
 from EncoderStack import EncoderStack
 from DecoderStack import DecoderStack
 from PositionalEncoding import positional_encoding
 
 
-class Translator(ks.Model):
+class Translator(tf.keras.Model):
     def __init__(
         self,
         num_layers,
@@ -43,14 +42,28 @@ class Translator(ks.Model):
         self.built = True
 
     def call(self, inputs, training=True):
-        enc_inputs, dec_inputs = inputs
+        enc_inputs, dec_inputs = inputs  # Expect [encoder_input, decoder_input]
+        """
+        enc_padding_mask = self.create_padding_mask(enc_inputs)
+        dec_padding_mask = self.create_padding_mask(dec_inputs)
+        look_ahead_mask = self.create_look_ahead_mask(tf.shape(dec_inputs)[1])
+        dec_self_mask = tf.maximum(dec_padding_mask, look_ahead_mask)
+        """
         enc_emb = self.encoder_embedding(enc_inputs)
         enc_emb += self.positional_encoding[:, : tf.shape(enc_emb)[1], :]
-        enc_output = self.encoder(enc_emb)
+        enc_output = self.encoder(enc_emb)  # No padding_mask for now
 
         dec_emb = self.decoder_embedding(dec_inputs)
         dec_emb += self.positional_encoding[:, : tf.shape(dec_emb)[1], :]
-        dec_output = self.decoder(dec_emb, enc_output)
+        dec_output = self.decoder(dec_emb, enc_output)  # No masks for now
 
         final_output = self.final_layer(dec_output)
         return final_output
+
+    def create_padding_mask(self, seq):
+        mask = tf.cast(tf.math.equal(seq, 0), tf.float32)
+        return mask[:, tf.newaxis, tf.newaxis, :]
+
+    def create_look_ahead_mask(self, size):
+        mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
+        return mask
