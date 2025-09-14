@@ -107,7 +107,7 @@ def main():
         "datasets",
         "EuroparlDataset",
         "ParallelCorpus_French-English",
-        "europarl-v7.fr-en.fr",
+        "europarl-v7.fr-en.fr.txt",
     )
     en_file = os.path.join(
         "..",
@@ -115,7 +115,7 @@ def main():
         "datasets",
         "EuroparlDataset",
         "ParallelCorpus_French-English",
-        "europarl-v7.fr-en.en",
+        "europarl-v7.fr-en.en.txt",
     )
     print("loading europarl data...")
     full_data = read_data(fr_file, en_file)
@@ -177,9 +177,9 @@ def main():
         predicted_ids[0].numpy(), skip_special_tokens=True
     )
     sample_true = tgt_tokenizer.decode(sample[1][0].numpy(), skip_special_tokens=True)
-    print("Sample source (French):", sample_src)
-    print("Sample predicted target (English):", sample_tgt)
-    print("Sample true target (English):", sample_true)
+    print("samplefrench:", sample_src)
+    print("sample english:", sample_tgt)
+    print("sample true english :", sample_true)
 
 
 if __name__ == "__main__":
