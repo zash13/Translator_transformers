@@ -1,3 +1,4 @@
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
-*.txt filter=lfs diff=lfs merge=lfs -text
+datasets/EuroparlDataset/ParallelCorpus_French-English/europarl-v7.fr-en.en.txt filter=lfs diff=lfs merge=lfs -text
+datasets/EuroparlDataset/ParallelCorpus_French-English/europarl-v7.fr-en.fr.txt filter=lfs diff=lfs merge=lfs -text
