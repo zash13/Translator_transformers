@@ -14,3 +14,6 @@ class EncoderBlock(layers.Layer):
 
     def call(self, input):
         return self.encoderBlock.call(input)
+
+    def build(self, input_shape):
+        super().build(input_shape)

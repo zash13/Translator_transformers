@@ -8,8 +8,8 @@ import tensorflow as tf
 from TranslatorModel import Translator
 
 MAX_SEQUENCE_LENGTH = 30
-INPUT_VOCAB_SIZE = 1000
-TARGET_VOCAB_SIZE = 1000
+INPUT_VOCAB_SIZE = 10000
+TARGET_VOCAB_SIZE = 10000
 BATCH_SIZE = 64
 EPOCHES = 2
 
@@ -43,6 +43,20 @@ def create_tokenizer(texts):
     )
     tokenizer.train_from_iterator(texts, trainer)
     return tokenizer
+
+
+def calculate_vocab_size(sentences, lower=True):
+    """
+    Calculate vocab size from a list of sentences.
+    """
+    vocab = set()
+    for sentence in sentences:
+        if lower:
+            sentence = sentence.lower()
+        # simple whitespace tokenizer
+        tokens = sentence.split()
+        vocab.update(tokens)
+    return len(vocab)
 
 
 def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=20):
@@ -129,6 +143,23 @@ def main():
     src_tokenizer = create_tokenizer(train_data["fr"])
     tgt_tokenizer = create_tokenizer(train_data["en"])
 
+    # Test source tokenizer (French)
+    test_fr = "Ceci est un test avec des mots inconnus comme supercalifragilistic."
+    fr_encoded = src_tokenizer.encode(test_fr)
+    print("Raw French tokens (with possible ##):", fr_encoded.tokens)
+    print(
+        "Decoded French (clean):",
+        src_tokenizer.decode(fr_encoded.ids, skip_special_tokens=True),
+    )
+
+    # Test target tokenizer (English)
+    test_en = "This is a test with unknown words like supercalifragilistic."
+    en_encoded = tgt_tokenizer.encode(test_en)
+    print("Raw English tokens (with possible ##):", en_encoded.tokens)
+    print(
+        "Decoded English (clean):",
+        tgt_tokenizer.decode(en_encoded.ids, skip_special_tokens=True),
+    )
     print("preprocessing data...")
     train_dataset = preprocess_data(
         train_data, src_tokenizer, tgt_tokenizer, max_sequence_length
