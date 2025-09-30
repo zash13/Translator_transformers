@@ -17,7 +17,7 @@ class Translator(keras.Model):
         input_vocab_size,
         target_vocab_size,
         max_sequence_length,
-        pad_id 
+        pad_id,
         rate=0.1,
     ):
         super().__init__()

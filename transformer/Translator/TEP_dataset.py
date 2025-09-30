@@ -140,8 +140,8 @@ def main():
     max_train_samples = 100000
     max_val_samples = 10000
 
-    src_file = os.path.join("..", "datasets", "TEP.en-fa.fa")
-    tgt_file = os.path.join("..", "datasets", "TEP.en-fa.en")
+    src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
+    tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
 
     print("loading TEP data...")
     full_data = read_data(src_file, tgt_file)
