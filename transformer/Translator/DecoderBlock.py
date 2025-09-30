@@ -48,3 +48,4 @@ class DecoderBlock(layers.Layer):
         ffn_output = self.feedforward_network_0(out_1)
         ffn_output = self.dropout_2(ffn_output)
         return self.layernorm_2(out_1 + ffn_output)
+    def predict(self , enc_output , start_token , max_len):
