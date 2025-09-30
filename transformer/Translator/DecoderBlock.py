@@ -8,19 +8,19 @@ import numpy as np
 # if you check the decoder block image, you'll understand everything!
 # attentiosn layers are designed like htis : https://jalammar.github.io/illustrated-transformer
 class DecoderBlock(layers.Layer):
-    def __init__(self, embeding_dim, num_heads, feadForward_dim, rate=0.1):
+    def __init__(self, embedding_dim, num_heads, fead_forward_dim, rate=0.1):
         super().__init__()
         self.self_attention = layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=embeding_dim
+            num_heads=num_heads, key_dim=embedding_dim
         )
         self.encoder_decoder_attentions = layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=embeding_dim
+            num_heads=num_heads, key_dim=embedding_dim
         )
 
         self.feedforward_network_0 = keras.Sequential(
             [
-                layers.Dense(feadForward_dim, activation="relu"),
-                layers.Dense(embeding_dim),
+                layers.Dense(fead_forward_dim, activation="relu"),
+                layers.Dense(embedding_dim),
             ]
         )
         self.layernorm_0 = layers.LayerNormalization(epsilon=1e-6)
@@ -30,11 +30,11 @@ class DecoderBlock(layers.Layer):
         self.dropout_1 = layers.Dropout(rate)
         self.dropout_2 = layers.Dropout(rate)
 
-    def call(self, inputs, enc_output, look_agead_mask=None, padding_mask=None):
+    def call(self, inputs, enc_output, look_ahead_mask=None, padding_mask=None):
         # i added this mask based on gpt's suggestion. it seems that when the attention layer learns its parameters,
         # it sometimes looks ahead into future inputs, which is like cheating. this mask prevents it from accessing positions like t+1.
         attention_output_0 = self.self_attention(
-            query=inputs, value=inputs, key=inputs, attention_mask=look_agead_mask
+            query=inputs, value=inputs, key=inputs, attention_mask=look_ahead_mask
         )
         attention_output_0 = self.dropout_0(attention_output_0)
         out_0 = self.layernorm_0(inputs + attention_output_0)
