@@ -20,7 +20,7 @@ MAX_SEQUENCE_LENGTH = 30
 INPUT_VOCAB_SIZE = 100000
 TARGET_VOCAB_SIZE = 60000
 BATCH_SIZE = 64
-EPOCHES = 1
+EPOCHS = 1
 SPECIAL_TOKENS = ["[UNK]", "[PAD]", "[BOS]", "[EOS]"]
 
 
@@ -73,23 +73,30 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
         tgt_enc = tgt_tokenizer.encode(row["tgt"])
         src = src_enc.ids
         tgt = tgt_enc.ids
-        if len(src) > max_length - 2 or len(tgt) > max_length - 2:
+        # two thing happen in here , first , i check the len by toekns , second,  i reudce the src by 2 , to lean space for bos and eos
+        if len(src_enc.tokens) > max_length - 2 or len(tgt_enc.tokens) > max_length - 2:
             return None
         src = (
             [src_tokenizer.token_to_id("[BOS]")]
-            + src
+            + src[: max_length - 2]
             + [src_tokenizer.token_to_id("[EOS]")]
         )
         tgt = (
             [tgt_tokenizer.token_to_id("[BOS]")]
-            + tgt
+            + tgt[: max_length - 2]
             + [tgt_tokenizer.token_to_id("[EOS]")]
         )
+        src = src + [src_tokenizer.token_to_id("[PAD]")] * (max_length - len(src))
+        tgt = tgt + [tgt_tokenizer.token_to_id("[PAD]")] * (max_length - len(tgt))
         return src, tgt[:-1], tgt[1:]
 
-    encoded = data.apply(encode, axis=1, result_type="expand")
-    encoded = encoded.dropna()
-    encoded.columns = ["src", "tgt_in", "tgt_out"]
+    encoded_data = []
+    for _, row in data.iterrows():
+        result = encode(row)
+        if result is not None:
+            encoded_data.append(result)
+
+    encoded = pd.DataFrame(encoded_data, columns=["src", "tgt_in", "tgt_out"])
 
     def gen():
         for _, row in encoded.iterrows():
@@ -140,8 +147,8 @@ def main():
     max_train_samples = 100000
     max_val_samples = 10000
 
-    src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
-    tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
+    src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
+    tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
 
     print("loading TEP data...")
     full_data = read_data(src_file, tgt_file)
@@ -192,8 +199,7 @@ def main():
     )
 
     print("Training model...")
-    model.fit(train_dataset, validation_data=val_dataset, epochs=EPOCHES)
-
+    model.fit(train_dataset, validation_data=val_dataset, epochs=EPOCHS)
     print("Evaluating BLEU score...")
     bleu_score = evaluate_bleu(model, val_dataset, src_tokenizer, tgt_tokenizer)
     print(f"Validation BLEU: {bleu_score:.2f}")
