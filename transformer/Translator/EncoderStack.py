@@ -14,8 +14,11 @@ class EncoderStack(layers.Layer):
             for _ in range(num_layers)
         ]
 
-    def call(self, inputs):
+    def build(self, input_shape):
+        super().build(input_shape)
+
+    def call(self, inputs, training=True, padding_mask=None):
         x = inputs
         for layer in self.encoder_stack:
-            x = layer(x)
+            x = layer(x, training=training, padding_mask=padding_mask)
         return x
