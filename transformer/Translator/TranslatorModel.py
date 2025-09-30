@@ -17,6 +17,7 @@ class Translator(keras.Model):
         input_vocab_size,
         target_vocab_size,
         max_sequence_length,
+        pad_id 
         rate=0.1,
     ):
         super().__init__()
@@ -32,7 +33,7 @@ class Translator(keras.Model):
             num_layers, embedding_dim, num_heads, feed_forward_dim, rate
         )
         self.final_layer = keras.layers.Dense(target_vocab_size)
-        self.pad_id = 1  # [PAD] ID based on tokenizer specials order
+        self.pad_id = pad_id
         self.max_sequence_length = max_sequence_length
 
     def build(self, input_shape):
