@@ -33,7 +33,10 @@ class TransformerBlock(layers.Layer):
         self.dropout1 = layers.Dropout(rate)
         self.dropout2 = layers.Dropout(rate)
 
-    def call(self, inputs):
+    def build(self, input_shape):
+        super().build(input_shape)
+
+    def call(self, inputs, training=True, padding_mask=None):
         # if you not get this part to , read articles about differece between self attention and attention( i think so )
         # i think in self attention , each token look at all tokens including itself , so query = key = value = input
         # while in attention it self , we have Q and V and K
@@ -41,12 +44,14 @@ class TransformerBlock(layers.Layer):
         # as an example , gpt told me in encode-decoder attention which i am not implement it nor see it yet ( i even dont know whats it do )
         # Q comes from decoder while K and V comes from encoder
         # key=none -> key=value
-        attention_output = self.attention_layer(query=inputs, value=inputs)
-        attention_output = self.dropout1(attention_output)
+        attention_output = self.attention_layer(
+            query=inputs, value=inputs, key=inputs, attention_mask=padding_mask
+        )
+        attention_output = self.dropout1(attention_output, training=training)
         # now each toekn aware of whole sentence how ? i dont know :)
         #
         # look at the figur 1 in attentoins is all you need paper , you will find this layer there
         out1 = self.layernorm1(inputs + attention_output)
         fnn_output = self.feedforward_network(out1)
-        fnn_output = self.dropout2(fnn_output)
+        fnn_output = self.dropout2(fnn_output, training=training)
         return self.layernorm2(out1 + fnn_output)
