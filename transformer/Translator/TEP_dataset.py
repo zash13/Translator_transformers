@@ -67,27 +67,34 @@ def create_tokenizer(texts, vocab_size):
     return tokenizer
 
 
-def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
+def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=MAX_SEQUENCE_LENGTH):
     def encode(row):
         src_enc = src_tokenizer.encode(row["src"])
         tgt_enc = tgt_tokenizer.encode(row["tgt"])
-        src = src_enc.ids
-        tgt = tgt_enc.ids
-        # two thing happen in here , first , i check the len by toekns , second,  i reudce the src by 2 , to lean space for bos and eos
-        if len(src_enc.tokens) > max_length - 2 or len(tgt_enc.tokens) > max_length - 2:
+        if len(src_enc.tokens) > max_length or len(tgt_enc.tokens) > max_length:
+            print(
+                f"Skipping: src_len={len(src_enc.tokens)}, tgt_len={len(tgt_enc.tokens)}"
+            )
             return None
-        src = (
-            [src_tokenizer.token_to_id("[BOS]")]
-            + src[: max_length - 2]
-            + [src_tokenizer.token_to_id("[EOS]")]
-        )
-        tgt = (
-            [tgt_tokenizer.token_to_id("[BOS]")]
-            + tgt[: max_length - 2]
-            + [tgt_tokenizer.token_to_id("[EOS]")]
-        )
-        src = src + [src_tokenizer.token_to_id("[PAD]")] * (max_length - len(src))
-        tgt = tgt + [tgt_tokenizer.token_to_id("[PAD]")] * (max_length - len(tgt))
+        src = src_enc.ids[:max_length]
+        tgt = tgt_enc.ids[:max_length]
+        src[0] = src_tokenizer.token_to_id("[BOS]")
+        src[-1] = src_tokenizer.token_to_id("[EOS]")
+        tgt[0] = tgt_tokenizer.token_to_id("[BOS]")
+        tgt[-1] = tgt_tokenizer.token_to_id("[EOS]")
+        if len(src) != max_length or len(tgt) != max_length:
+            print(f"Invalid length: src={len(src)}, tgt={len(tgt)}")
+            return None
+        if src[0] != src_tokenizer.token_to_id("[BOS]") or src[
+            -1
+        ] != src_tokenizer.token_to_id("[EOS]"):
+            print(f"Invalid src tokens: {src}")
+            return None
+        if tgt[0] != tgt_tokenizer.token_to_id("[BOS]") or tgt[
+            -1
+        ] != tgt_tokenizer.token_to_id("[EOS]"):
+            print(f"Invalid tgt tokens: {tgt}")
+            return None
         return src, tgt[:-1], tgt[1:]
 
     encoded_data = []
@@ -96,7 +103,12 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
         if result is not None:
             encoded_data.append(result)
 
+    if not encoded_data:
+        raise ValueError(
+            "No valid samples after preprocessing. Increase max_length or check data."
+        )
     encoded = pd.DataFrame(encoded_data, columns=["src", "tgt_in", "tgt_out"])
+    print(f"Preprocessed {len(encoded)} samples")
 
     def gen():
         for _, row in encoded.iterrows():
@@ -144,8 +156,8 @@ def main():
     target_vocab_size = TARGET_VOCAB_SIZE
     max_sequence_length = MAX_SEQUENCE_LENGTH
     batch_size = BATCH_SIZE
-    max_train_samples = 100000
-    max_val_samples = 10000
+    max_train_samples = 1000
+    max_val_samples = 10
 
     src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
     tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
@@ -153,12 +165,9 @@ def main():
     print("loading TEP data...")
     full_data = read_data(src_file, tgt_file)
 
-    # drop half of the data
-    half_data = full_data.sample(frac=0.3, random_state=42)
-
     # proceed with train/val split on the reduced data
-    train_data = half_data.sample(n=max_train_samples, random_state=42)
-    val_data = half_data.drop(train_data.index).sample(
+    train_data = full_data.sample(n=max_train_samples, random_state=42)
+    val_data = full_data.drop(train_data.index).sample(
         n=max_val_samples, random_state=42
     )
 
