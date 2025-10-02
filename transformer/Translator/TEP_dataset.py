@@ -1,3 +1,4 @@
+from numpy import full
 import tensorflow as tf
 import keras
 
@@ -16,9 +17,9 @@ from tqdm import tqdm
 gpus = tf.config.list_physical_devices("GPU")
 print("Num GPUs available:", len(gpus))
 
-MAX_SEQUENCE_LENGTH = 30
-INPUT_VOCAB_SIZE = 100000
-TARGET_VOCAB_SIZE = 60000
+MAX_SEQUENCE_LENGTH = 40
+INPUT_VOCAB_SIZE = 14000
+TARGET_VOCAB_SIZE = 16000
 BATCH_SIZE = 64
 EPOCHS = 1
 SPECIAL_TOKENS = ["[UNK]", "[PAD]", "[BOS]", "[EOS]"]
@@ -41,16 +42,25 @@ def read_data(src_file, tgt_file):
 
 
 def calculate_vocab_coverage(
-    full_data, input_vocab_size, target_vocab_size, src_tokenizer, tgt_tokenizer
+    full_data, input_vocab_size, target_vocab_size, lower=True
 ):
-    src_vocab = set(src_tokenizer.get_vocab().keys())
-    tgt_vocab = set(tgt_tokenizer.get_vocab().keys())
+    src_vocab = set()
+    for sentence in full_data["src"]:
+        if lower:
+            sentence = sentence.lower()
+        src_vocab.update(sentence.split())  # Word-level
+    tgt_vocab = set()
+    for sentence in full_data["tgt"]:
+        if lower:
+            sentence = sentence.lower()
+        tgt_vocab.update(sentence.split())
     src_coverage = min(input_vocab_size / len(src_vocab), 1.0) * 100
     tgt_coverage = min(target_vocab_size / len(tgt_vocab), 1.0) * 100
-    print(f"Input vocab size in tokenizer: {len(src_vocab)}")
-    print(f"Target vocab size in tokenizer: {len(tgt_vocab)}")
-    print(f"Input tokenizer covers ~{src_coverage:.2f}% of vocab")
-    print(f"Target tokenizer covers ~{tgt_coverage:.2f}% of vocab")
+    print(f"Input (English) word vocab size: {len(src_vocab)}")
+    print(f"Target (Persian) word vocab size: {len(tgt_vocab)}")
+    print(f"Input tokenizer covers ~{src_coverage:.2f}% of words")
+    print(f"Target tokenizer covers ~{tgt_coverage:.2f}% of words")
+    # Real word-level size (for reference)
     return len(src_vocab), len(tgt_vocab), src_coverage, tgt_coverage
 
 
@@ -58,73 +68,24 @@ def create_tokenizer(texts, vocab_size):
     tokenizer = Tokenizer(WordPiece(unk_token="[UNK]"))
     tokenizer.pre_tokenizer = Whitespace()
     trainer = WordPieceTrainer(vocab_size=vocab_size, special_tokens=SPECIAL_TOKENS)
-    tokenizer.train_from_iterator(texts, trainer)
-    tokenizer.enable_padding(
-        pad_id=tokenizer.token_to_id("[PAD]"),
-        pad_token="[PAD]",
-        length=MAX_SEQUENCE_LENGTH,
-    )
+    tokenizer.train_from_iterator(texts, trainer=trainer)
     return tokenizer
 
 
-def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=MAX_SEQUENCE_LENGTH):
-    def encode(row):
-        src_enc = src_tokenizer.encode(row["src"])
-        tgt_enc = tgt_tokenizer.encode(row["tgt"])
-        if len(src_enc.tokens) > max_length or len(tgt_enc.tokens) > max_length:
-            print(
-                f"Skipping: src_len={len(src_enc.tokens)}, tgt_len={len(tgt_enc.tokens)}"
-            )
-            return None
-        src = src_enc.ids[:max_length]
-        tgt = tgt_enc.ids[:max_length]
-        src[0] = src_tokenizer.token_to_id("[BOS]")
-        src[-1] = src_tokenizer.token_to_id("[EOS]")
-        tgt[0] = tgt_tokenizer.token_to_id("[BOS]")
-        tgt[-1] = tgt_tokenizer.token_to_id("[EOS]")
-        if len(src) != max_length or len(tgt) != max_length:
-            print(f"Invalid length: src={len(src)}, tgt={len(tgt)}")
-            return None
-        if src[0] != src_tokenizer.token_to_id("[BOS]") or src[
-            -1
-        ] != src_tokenizer.token_to_id("[EOS]"):
-            print(f"Invalid src tokens: {src}")
-            return None
-        if tgt[0] != tgt_tokenizer.token_to_id("[BOS]") or tgt[
-            -1
-        ] != tgt_tokenizer.token_to_id("[EOS]"):
-            print(f"Invalid tgt tokens: {tgt}")
-            return None
-        return src, tgt[:-1], tgt[1:]
-
+def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
+    """
+    Returns a tf.data.Dataset  ((src, tgt_in), tgt_out).
+    src shape: (max_length,)           -> contains [BOS] ... [EOS] + PADs
+    tgt_in shape: (max_length-1,)      -> sequence that the decoder consumes
+    tgt_out shape: (max_length-1,)     -> expected decoder outputs (shifted)
+    """
+    pad_id_src = src_tokenizer.token_to_id("[PAD]")
+    pad_id_tgt = tgt_tokenizer.token_to_id("[PAD]")
+    bos_id_src = src_tokenizer.token_to_id("[BOS]")
+    eos_id_src = src_tokenizer.token_to_id("[EOS]")
+    bos_id_tgt = src_tokenizer.token_to_id("[BOS]")
+    eos_id_tgt = src_tokenizer.token_to_id("[EOS]")
     encoded_data = []
-    for _, row in data.iterrows():
-        result = encode(row)
-        if result is not None:
-            encoded_data.append(result)
-
-    if not encoded_data:
-        raise ValueError(
-            "No valid samples after preprocessing. Increase max_length or check data."
-        )
-    encoded = pd.DataFrame(encoded_data, columns=["src", "tgt_in", "tgt_out"])
-    print(f"Preprocessed {len(encoded)} samples")
-
-    def gen():
-        for _, row in encoded.iterrows():
-            yield ((row["src"], row["tgt_in"]), row["tgt_out"])
-
-    tf_dataset = tf.data.Dataset.from_generator(
-        gen,
-        output_signature=(
-            (
-                tf.TensorSpec(shape=(max_length,), dtype=tf.int32),
-                tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
-            ),
-            tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
-        ),
-    )
-    return tf_dataset
 
 
 def evaluate_bleu(model, dataset, src_tokenizer, tgt_tokenizer, max_length=30):
@@ -147,6 +108,76 @@ def evaluate_bleu(model, dataset, src_tokenizer, tgt_tokenizer, max_length=30):
     return bleu.score
 
 
+MOCK_SENTENCES = [
+    {"english": "Hello, how are you?", "persian": "سلام، حالت چطوره؟"},
+    {"english": "I am fine, thank you.", "persian": "من خوبم، ممنون."},
+    {"english": "What is your name?", "persian": "اسمت چیه؟"},
+    {"english": "I live in Tehran.", "persian": "من در تهران زندگی می‌کنم."},
+    {"english": "The weather is nice today.", "persian": "هوا امروز خوبه."},
+    {"english": "I like reading books.", "persian": "من کتاب خوندن رو دوست دارم."},
+    {"english": "See you later.", "persian": "بعداً می‌بینمت."},
+    {"english": "Good morning!", "persian": "صبح بخیر!"},
+    {"english": "I need help.", "persian": "من به کمک نیاز دارم."},
+    {
+        "english": "Goodbye, have a good day.",
+        "persian": "خداحافظ، روز خوبی داشته باشی.",
+    },
+]
+
+
+def test_mock_predictions(
+    model, src_tokenizer, tgt_tokenizer, mock_sentences=MOCK_SENTENCES
+):
+    """
+    Tests model predictions on a hardcoded list of mock English sentences.
+    Prints a table: English Input | Expected Persian | Model Prediction
+    """
+    results = []
+    bos_id = tgt_tokenizer.token_to_id("[BOS]")
+    eos_id = tgt_tokenizer.token_to_id("[EOS]")
+    pad_id = tgt_tokenizer.token_to_id("[PAD]")
+
+    for sentence in mock_sentences:
+        english_text = sentence["english"]
+        expected_persian = sentence["persian"]
+
+        # Tokenize English for encoder input (add [BOS]/[EOS], pad to max_length)
+        enc_tokens = src_tokenizer.encode(english_text).ids
+        enc_input = (
+            [src_tokenizer.token_to_id("[BOS]")]
+            + enc_tokens
+            + [src_tokenizer.token_to_id("[EOS]")]
+        )
+        enc_input = enc_input[:MAX_SEQUENCE_LENGTH] + [
+            src_tokenizer.token_to_id("[PAD]")
+        ] * (MAX_SEQUENCE_LENGTH - len(enc_input))
+        enc_input = tf.constant([enc_input])  # Batch of 1
+
+        # Predict Persian tokens
+        pred_tokens = model.predict(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
+
+        # Decode prediction (remove special tokens)
+        pred_ids = pred_tokens[0].numpy()  # First batch item
+        pred_text = tgt_tokenizer.decode(
+            [id for id in pred_ids if id not in [bos_id, eos_id, pad_id]]
+        )
+
+        results.append(
+            {
+                "English Input": english_text,
+                "Expected Persian": expected_persian,
+                "Model Prediction": pred_text,
+            }
+        )
+
+    # Beautiful table print
+    results_df = pd.DataFrame(results)
+    print("\n=== Mock Sentence Predictions ===")
+    print(
+        results_df.to_string(index=False, max_colwidth=40)
+    )  # Truncate for readability
+
+
 def main():
     num_layers = 2
     embedding_dim = 128
@@ -156,25 +187,37 @@ def main():
     target_vocab_size = TARGET_VOCAB_SIZE
     max_sequence_length = MAX_SEQUENCE_LENGTH
     batch_size = BATCH_SIZE
-    max_train_samples = 1000
-    max_val_samples = 10
+    # you can ether set this variable , or let it be maximum of waht we have in dataset
+    max_train_samples = 10000
+    val_samples_ratio = 0.1
 
     src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
     tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
 
     print("loading TEP data...")
     full_data = read_data(src_file, tgt_file)
+    total_sampels = len(full_data)
+    max_train_samples = int(
+        total_sampels * (1 - val_samples_ratio)
+        if max_train_samples == 0
+        else max_train_samples
+    )
+    max_val_samples = int(max_train_samples * val_samples_ratio)
 
-    # proceed with train/val split on the reduced data
     train_data = full_data.sample(n=max_train_samples, random_state=42)
     val_data = full_data.drop(train_data.index).sample(
         n=max_val_samples, random_state=42
+    )
+    print(
+        f"total samples : {total_sampels} train samples :{max_train_samples} validation sampels :{max_val_samples} validation ratio: {val_samples_ratio} "
     )
 
     print("training tokenizers...")
     src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)  # persian
     tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)  # english
 
+    print("information about vocab : ")
+    calculate_vocab_coverage(full_data, input_vocab_size, target_vocab_size)
     print("preprocessing data...")
     train_dataset = preprocess_data(
         train_data, src_tokenizer, tgt_tokenizer, max_sequence_length
@@ -209,11 +252,58 @@ def main():
 
     print("Training model...")
     model.fit(train_dataset, validation_data=val_dataset, epochs=EPOCHS)
+    test_mock_predictions(model, src_tokenizer, tgt_tokenizer)
     print("Evaluating BLEU score...")
     bleu_score = evaluate_bleu(model, val_dataset, src_tokenizer, tgt_tokenizer)
     print(f"Validation BLEU: {bleu_score:.2f}")
 
     model.save_weights("translator_model_architecture.weights.h5")
+
+
+def interactive_translate(model, src_tokenizer, tgt_tokenizer):
+    """
+    Interactive mode: User inputs English sentence, model translates to Persian.
+    Type 'quit' to exit.
+    """
+    bos_id = tgt_tokenizer.token_to_id("[BOS]")
+    eos_id = tgt_tokenizer.token_to_id("[EOS]")
+    pad_id = tgt_tokenizer.token_to_id("[PAD]")
+
+    print("\n=== Interactive Translation Mode ===")
+    print("Enter an English sentence (or 'quit' to exit):")
+
+    while True:
+        english_text = input("> ").strip()
+        if english_text.lower() == "quit":
+            print("Exiting interactive mode.")
+            break
+
+        if not english_text:
+            print("Please enter a valid sentence.")
+            continue
+
+        # Tokenize English for encoder input (add [BOS]/[EOS], pad)
+        enc_tokens = src_tokenizer.encode(english_text).ids
+        enc_input = (
+            [src_tokenizer.token_to_id("[BOS]")]
+            + enc_tokens
+            + [src_tokenizer.token_to_id("[EOS]")]
+        )
+        enc_input = enc_input[:MAX_SEQUENCE_LENGTH] + [
+            src_tokenizer.token_to_id("[PAD]")
+        ] * (MAX_SEQUENCE_LENGTH - len(enc_input))
+        enc_input = tf.constant([enc_input])  # Batch of 1
+
+        # Predict Persian tokens
+        pred_tokens = model.predict(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
+
+        # Decode prediction (remove special tokens)
+        pred_ids = pred_tokens[0].numpy()  # First batch item
+        pred_text = tgt_tokenizer.decode(
+            [id for id in pred_ids if id not in [bos_id, eos_id, pad_id]]
+        )
+
+        print(f"Translation: {pred_text}\n")
 
 
 if __name__ == "__main__":
