@@ -4,6 +4,7 @@ import keras
 
 import os
 import pandas as pd
+import numpy as np
 from tokenizers import Tokenizer
 import tokenizers
 from tokenizers.models import WordPiece
@@ -79,6 +80,7 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
     tgt_in shape: (max_length-1,)      -> sequence that the decoder consumes
     tgt_out shape: (max_length-1,)     -> expected decoder outputs (shifted)
     """
+    # rather then using tokenizer padding , which case the problem in the model learning because EOS and BOS was not properly set , ithink , i rather to manualy encode and generate dataset
     pad_id_src = src_tokenizer.token_to_id("[PAD]")
     pad_id_tgt = tgt_tokenizer.token_to_id("[PAD]")
     bos_id_src = src_tokenizer.token_to_id("[BOS]")
@@ -86,6 +88,57 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
     bos_id_tgt = src_tokenizer.token_to_id("[BOS]")
     eos_id_tgt = src_tokenizer.token_to_id("[EOS]")
     encoded_data = []
+    for _, row in data.iterrows():
+        src_ids = src_tokenizer.encode(row["src"]).ids
+        tgt_ids = tgt_tokenizer.encode(row["tgt"]).ids
+
+        # truncate to keep room for eos bos
+        src_ids = src_ids[: max_length - 2]
+        tgt_ids = tgt_ids[: max_length - 2]
+
+        src_seq = [bos_id_src] + src_ids + [eos_id_src]
+        tgt_seq = [bos_id_tgt] + tgt_ids + [eos_id_tgt]
+
+        # build tgt_in and tgt_out
+        tgt_in = tgt_seq[:-1]  # remove final eos
+        tgt_out = tgt_seq[1:]  # remove initial bos
+
+        # paddings :
+        if len(src_seq) > max_length:
+            src_seq = src_seq[:max_length]
+        src_seq = src_seq + [pad_id_src] * (max_length - len(src_seq))
+
+        tgt_in_len = max_length - 1
+        if len(tgt_in) > tgt_in_len:
+            tgt_in = tgt_in[:tgt_in_len]
+        tgt_in = tgt_in + [pad_id_tgt] * (tgt_in_len - len(tgt_in))
+
+        if len(tgt_out) > tgt_in_len:
+            tgt_out = tgt_out[:tgt_in_len]
+        tgt_out = tgt_out + [pad_id_tgt] * (tgt_in_len - len(tgt_out))
+        encoded_data.append(
+            (
+                np.array(src_seq, dtype=np.int32),
+                np.array(tgt_in, dtype=np.int32),
+                np.array(tgt_out, dtype=np.int32),
+            )
+        )
+
+    def gen():
+        for s, tin, tout in encoded_data:
+            yield ((s, tin), tout)
+
+    tf_dataset = tf.data.Dataset.from_generator(
+        gen,
+        output_signature=(
+            (
+                tf.TensorSpec(shape=(max_length,), dtype=tf.int32),
+                tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
+            ),
+            tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
+        ),
+    )
+    return tf_dataset
 
 
 def evaluate_bleu(model, dataset, src_tokenizer, tgt_tokenizer, max_length=30):
