@@ -1,28 +1,26 @@
-from numpy import full
-import tensorflow as tf
-import keras
-
 import os
 import pandas as pd
 import numpy as np
-from tokenizers import Tokenizer
-import tokenizers
+import tensorflow as tf
 from tokenizers.models import WordPiece
 from tokenizers.trainers import WordPieceTrainer
 from tokenizers.pre_tokenizers import Whitespace
-from TranslatorModel import Translator
 import sacrebleu
+import keras
 from tqdm import tqdm
+from TranslatorModel import Translator
+from tokenizers import Tokenizer
 
 
 gpus = tf.config.list_physical_devices("GPU")
 print("Num GPUs available:", len(gpus))
 
-MAX_SEQUENCE_LENGTH = 40
-INPUT_VOCAB_SIZE = 14000
-TARGET_VOCAB_SIZE = 16000
+MAX_SEQUENCE_LENGTH = 30
+# this this 2 to zero if you want to use max vocab size
+INPUT_VOCAB_SIZE = 90000
+TARGET_VOCAB_SIZE = 120000
 BATCH_SIZE = 64
-EPOCHS = 1
+EPOCHS = 3
 SPECIAL_TOKENS = ["[UNK]", "[PAD]", "[BOS]", "[EOS]"]
 
 
@@ -43,7 +41,7 @@ def read_data(src_file, tgt_file):
 
 
 def calculate_vocab_coverage(
-    full_data, input_vocab_size, target_vocab_size, lower=True
+    full_data, input_vocab_size, target_vocab_size, lower=True, print_output=True
 ):
     src_vocab = set()
     for sentence in full_data["src"]:
@@ -57,10 +55,11 @@ def calculate_vocab_coverage(
         tgt_vocab.update(sentence.split())
     src_coverage = min(input_vocab_size / len(src_vocab), 1.0) * 100
     tgt_coverage = min(target_vocab_size / len(tgt_vocab), 1.0) * 100
-    print(f"Input (English) word vocab size: {len(src_vocab)}")
-    print(f"Target (Persian) word vocab size: {len(tgt_vocab)}")
-    print(f"Input tokenizer covers ~{src_coverage:.2f}% of words")
-    print(f"Target tokenizer covers ~{tgt_coverage:.2f}% of words")
+    if print_output:
+        print(f"Input (English) word vocab size: {len(src_vocab)}")
+        print(f"Target (Persian) word vocab size: {len(tgt_vocab)}")
+        print(f"Input tokenizer covers ~{src_coverage:.2f}% of words")
+        print(f"Target tokenizer covers ~{tgt_coverage:.2f}% of words")
     # Real word-level size (for reference)
     return len(src_vocab), len(tgt_vocab), src_coverage, tgt_coverage
 
@@ -144,7 +143,7 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
 def evaluate_bleu(model, dataset, src_tokenizer, tgt_tokenizer, max_length=30):
     refs, hyps = [], []
     for (src, _), tgt_out in dataset:
-        pred = model.predict(
+        pred = model.generate(
             src,
             max_length,
             start_token=tgt_tokenizer.token_to_id("[BOS]"),
@@ -207,7 +206,7 @@ def test_mock_predictions(
         enc_input = tf.constant([enc_input])  # Batch of 1
 
         # Predict Persian tokens
-        pred_tokens = model.predict(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
+        pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
 
         # Decode prediction (remove special tokens)
         pred_ids = pred_tokens[0].numpy()  # First batch item
@@ -241,8 +240,8 @@ def main():
     max_sequence_length = MAX_SEQUENCE_LENGTH
     batch_size = BATCH_SIZE
     # you can ether set this variable , or let it be maximum of waht we have in dataset
-    max_train_samples = 10000
-    val_samples_ratio = 0.1
+    max_train_samples = 0
+    val_samples_ratio = 0.2
 
     src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
     tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
@@ -250,12 +249,14 @@ def main():
     print("loading TEP data...")
     full_data = read_data(src_file, tgt_file)
     total_sampels = len(full_data)
-    max_train_samples = int(
-        total_sampels * (1 - val_samples_ratio)
-        if max_train_samples == 0
-        else max_train_samples
-    )
-    max_val_samples = int(max_train_samples * val_samples_ratio)
+
+    if max_train_samples == 0:
+        max_train_samples = int(total_sampels * (1 - val_samples_ratio))
+        max_val_samples = int(total_sampels * (val_samples_ratio))
+    else:
+        max_val_samples = int(
+            max_train_samples * val_samples_ratio,
+        )
 
     train_data = full_data.sample(n=max_train_samples, random_state=42)
     val_data = full_data.drop(train_data.index).sample(
@@ -265,12 +266,19 @@ def main():
         f"total samples : {total_sampels} train samples :{max_train_samples} validation sampels :{max_val_samples} validation ratio: {val_samples_ratio} "
     )
 
+    print("Vocabulary information:")
+    src_vocab_size, tgt_vocab_size, _, _ = calculate_vocab_coverage(
+        full_data, input_vocab_size, target_vocab_size, lower=True, print_output=False
+    )
+    input_vocab_size = src_vocab_size if input_vocab_size == 0 else input_vocab_size
+    target_vocab_size = tgt_vocab_size if target_vocab_size == 0 else target_vocab_size
+    src_vocab_size, tgt_vocab_size, _, _ = calculate_vocab_coverage(
+        full_data, input_vocab_size, target_vocab_size, lower=True, print_output=True
+    )
     print("training tokenizers...")
     src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)  # persian
     tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)  # english
 
-    print("information about vocab : ")
-    calculate_vocab_coverage(full_data, input_vocab_size, target_vocab_size)
     print("preprocessing data...")
     train_dataset = preprocess_data(
         train_data, src_tokenizer, tgt_tokenizer, max_sequence_length
@@ -348,7 +356,7 @@ def interactive_translate(model, src_tokenizer, tgt_tokenizer):
         enc_input = tf.constant([enc_input])  # Batch of 1
 
         # Predict Persian tokens
-        pred_tokens = model.predict(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
+        pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
 
         # Decode prediction (remove special tokens)
         pred_ids = pred_tokens[0].numpy()  # First batch item
