@@ -1,10 +1,9 @@
-import tensorflow as tf
-from tensorflow.python import training
 import keras
 from EncoderStack import EncoderStack
 from DecoderStack import DecoderStack
 from TokenEmbedding import TokenEmbedding
 from PositionalEncoding import positional_encoding
+import tensorflow as tf
 
 
 class Translator(keras.Model):
@@ -85,7 +84,7 @@ class Translator(keras.Model):
         mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
         return mask
 
-    def predict(self, inputs, max_sequence_length, start_token, end_token):
+    def generate(self, inputs, max_sequence_length, start_token, end_token):
         """
         GREADY DECODING LOOP FOR PREDICTIONS
             args :
@@ -132,6 +131,11 @@ class Translator(keras.Model):
             # w
             last_token_output = dec_output[:, -1, :]
             logits = self.final_layer(last_token_output)
+            # the use of argmax here is incorrect. there should be a parameter like π or α that represents
+            # the probability or rate of choosing either the argmax or a lower-level alternative.
+            # sometimes, there are other words similar to the argmax choice, but the model avoids selecting them.
+            # the model can get stuck on a word due to poor training data or a bad input sequence,
+            # or for other reasons.
             predicted_ids = tf.argmax(logits, axis=-1, output_type=tf.int32)
             predicted_ids = tf.expand_dims(predicted_ids, 1)  # (batch_size, 1)
 
