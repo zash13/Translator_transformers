@@ -85,6 +85,48 @@ class Translator(keras.Model):
         return mask
 
     def generate(self, inputs, max_sequence_length, start_token, end_token):
+        batch_size = tf.shape(inputs)[0]
+
+        # Encode once
+        enc_padding_mask = self.create_padding_mask(inputs)
+        enc_emb = self.encoder_embedding(inputs)
+        enc_emb += self.positional_encoding[:, : tf.shape(enc_emb)[1], :]
+        enc_output = self.encoder(
+            enc_emb, training=False, padding_mask=enc_padding_mask
+        )
+
+        # Initialize with <BOS>
+        decoded = tf.fill([batch_size, 1], start_token)
+        finished = tf.zeros([batch_size], dtype=tf.bool)
+
+        for _ in tf.range(max_sequence_length - 1):
+            look_ahead_mask = self.create_look_ahead_mask(tf.shape(decoded)[1])
+            dec_emb = self.decoder_embedding(decoded)
+            dec_emb += self.positional_encoding[:, : tf.shape(dec_emb)[1], :]
+            dec_output = self.decoder(
+                dec_emb,
+                enc_output,
+                training=False,
+                look_ahead_mask=look_ahead_mask,
+                padding_mask=enc_padding_mask,
+            )
+
+            # Take last step logits
+            last_token_output = dec_output[:, -1, :]
+            logits = self.final_layer(last_token_output)
+            predicted_ids = tf.argmax(logits, axis=-1, output_type=tf.int32)
+
+            predicted_ids = tf.expand_dims(predicted_ids, 1)  # (batch, 1)
+            decoded = tf.concat([decoded, predicted_ids], axis=1)
+
+            # Mark finished sequences
+            finished = finished | tf.equal(predicted_ids[:, 0], end_token)
+            if tf.reduce_all(finished):
+                break
+
+        return decoded
+
+    def generate2(self, inputs, max_sequence_length, start_token, end_token):
         """
         GREADY DECODING LOOP FOR PREDICTIONS
             args :
