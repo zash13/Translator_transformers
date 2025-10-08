@@ -30,6 +30,26 @@ from PositionalEncoding import positional_encoding
 import tensorflow as tf
 
 
+def normalize_texts(texts, lower=True, strip=True):
+    """
+    Normalize a list of input strings before tokenization.
+    - lower: convert to lowercase
+    - strip: remove extra whitespace
+    """
+    if isinstance(texts, str):
+        texts = [texts]  # support single string
+
+    normalized = []
+    for t in texts:
+        if lower:
+            t = t.lower()
+        if strip:
+            t = " ".join(t.split())  # remove duplicate spaces
+        normalized.append(t)
+
+    return normalized if len(normalized) > 1 else normalized[0]
+
+
 class Translator(keras.Model):
     def __init__(
         self,
@@ -145,8 +165,8 @@ class Translator(keras.Model):
             probs = tf.nn.softmax(logits / 1.2, axis=-1)  # temperature
             predicted_ids = tf.random.categorical(tf.math.log(probs), num_samples=1)
             predicted_ids = tf.squeeze(predicted_ids, axis=-1)
-
-            predicted_ids = tf.expand_dims(predicted_ids, 1)  # (batch, 1)
+            predicted_ids = tf.cast(predicted_ids, decoded.dtype)
+            predicted_ids = tf.expand_dims(predicted_ids, 1)
             decoded = tf.concat([decoded, predicted_ids], axis=1)
 
             # Mark finished sequences
@@ -273,8 +293,8 @@ def test_preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length):
     pad_id_tgt = tgt_tokenizer.token_to_id("[PAD]")
     bos_id_src = src_tokenizer.token_to_id("[BOS]")
     eos_id_src = src_tokenizer.token_to_id("[EOS]")
-    bos_id_tgt = src_tokenizer.token_to_id("[BOS]")
-    eos_id_tgt = src_tokenizer.token_to_id("[EOS]")
+    bos_id_tgt = tgt_tokenizer.token_to_id("[BOS]")
+    eos_id_tgt = tgt_tokenizer.token_to_id("[EOS]")
 
     with open("preprocess_log.txt", "w") as log:
         log.write(
@@ -379,72 +399,102 @@ def test_preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length):
     return results, all_good
 
 
-def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
+def preprocess_examples(
+    src_texts,
+    tgt_texts=None,
+    src_tokenizer=None,
+    tgt_tokenizer=None,
+    max_length=30,
+    training=True,
+):
     """
-    Returns a tf.data.Dataset  ((src, tgt_in), tgt_out).
-    src shape: (max_length,)           -> contains [BOS] ... [EOS] + PADs
-    tgt_in shape: (max_length-1,)      -> sequence that the decoder consumes
-    tgt_out shape: (max_length-1,)     -> expected decoder outputs (shifted)
+    this is a generate method to preprocess the data
+    preprocesses source (and optionally target) texts into padded token ids.
+
+    args:
+        src_texts (str or list[str]): source sentence(s).
+        tgt_texts (str or list[str], optional): target sentence(s). required in training.
+        training (bool): if true → returns (src, tgt_in, tgt_out).
+                         if false → returns only (src,).
+
+    returns:
+        if training=true:
+            list of (src, tgt_in, tgt_out) arrays
+        if training=false:
+            list of src arrays
     """
-    # rather then using tokenizer padding , which case the problem in the model learning because EOS and BOS was not properly set , ithink , i rather to manualy encode and generate dataset
+
+    if isinstance(src_texts, str):
+        src_texts = [src_texts]
+    if tgt_texts is not None and isinstance(tgt_texts, str):
+        tgt_texts = [tgt_texts]
+
     pad_id_src = src_tokenizer.token_to_id("[PAD]")
     pad_id_tgt = tgt_tokenizer.token_to_id("[PAD]")
     bos_id_src = src_tokenizer.token_to_id("[BOS]")
     eos_id_src = src_tokenizer.token_to_id("[EOS]")
-    bos_id_tgt = src_tokenizer.token_to_id("[BOS]")
-    eos_id_tgt = src_tokenizer.token_to_id("[EOS]")
-    encoded_data = []
-    for _, row in data.iterrows():
-        src_ids = src_tokenizer.encode(row["src"]).ids
-        tgt_ids = tgt_tokenizer.encode(row["tgt"]).ids
+    bos_id_tgt = tgt_tokenizer.token_to_id("[BOS]")
+    eos_id_tgt = tgt_tokenizer.token_to_id("[EOS]")
 
-        # truncate to keep room for eos bos
-        src_ids = src_ids[: max_length - 2]
-        tgt_ids = tgt_ids[: max_length - 2]
+    results = []
 
+    for i, src_text in enumerate(src_texts):
+        src_ids = src_tokenizer.encode(src_text).ids[: max_length - 2]
         src_seq = [bos_id_src] + src_ids + [eos_id_src]
-        tgt_seq = [bos_id_tgt] + tgt_ids + [eos_id_tgt]
+        src_seq = src_seq[:max_length] + [pad_id_src] * (max_length - len(src_seq))
 
-        # build tgt_in and tgt_out
-        tgt_in = tgt_seq[:-1]  # remove final eos
-        tgt_out = tgt_seq[1:]  # remove initial bos
+        if training:
+            tgt_text = tgt_texts[i]
+            tgt_ids = tgt_tokenizer.encode(tgt_text).ids[: max_length - 2]
+            tgt_seq = [bos_id_tgt] + tgt_ids + [eos_id_tgt]
 
-        # paddings :
-        if len(src_seq) > max_length:
-            src_seq = src_seq[:max_length]
-        src_seq = src_seq + [pad_id_src] * (max_length - len(src_seq))
+            # Shifted
+            tgt_in = tgt_seq[:-1]
+            tgt_out = tgt_seq[1:]
 
-        tgt_in_len = max_length - 1
-        if len(tgt_in) > tgt_in_len:
-            tgt_in = tgt_in[:tgt_in_len]
-        tgt_in = tgt_in + [pad_id_tgt] * (tgt_in_len - len(tgt_in))
+            tgt_in_len = max_length - 1
+            tgt_in = tgt_in[:tgt_in_len] + [pad_id_tgt] * (tgt_in_len - len(tgt_in))
+            tgt_out = tgt_out[:tgt_in_len] + [pad_id_tgt] * (tgt_in_len - len(tgt_out))
 
-        if len(tgt_out) > tgt_in_len:
-            tgt_out = tgt_out[:tgt_in_len]
-        tgt_out = tgt_out + [pad_id_tgt] * (tgt_in_len - len(tgt_out))
-        encoded_data.append(
-            (
-                np.array(src_seq, dtype=np.int32),
-                np.array(tgt_in, dtype=np.int32),
-                np.array(tgt_out, dtype=np.int32),
+            results.append(
+                (
+                    np.array(src_seq, dtype=np.int32),
+                    np.array(tgt_in, dtype=np.int32),
+                    np.array(tgt_out, dtype=np.int32),
+                )
             )
-        )
+        else:
+            results.append(np.array(src_seq, dtype=np.int32))
 
+    return results
+
+
+def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
+    dataset = preprocess_examples(
+        src_texts=data["src"].tolist(),
+        tgt_texts=data["tgt"].tolist(),
+        src_tokenizer=src_tokenizer,
+        tgt_tokenizer=tgt_tokenizer,
+        max_length=max_length,
+        training=True,
+    )
+
+    # Turn into tf.data.Dataset
     def gen():
-        for s, tin, tout in encoded_data:
-            yield ((s, tin), tout)
+        for src, tin, tout in dataset:
+            yield ((src, tin), tout)
 
-    tf_dataset = tf.data.Dataset.from_generator(
+    train_dataset = tf.data.Dataset.from_generator(
         gen,
         output_signature=(
             (
-                tf.TensorSpec(shape=(max_length,), dtype=tf.int32),
-                tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
+                tf.TensorSpec(shape=(MAX_SEQUENCE_LENGTH,), dtype=tf.int32),
+                tf.TensorSpec(shape=(MAX_SEQUENCE_LENGTH - 1,), dtype=tf.int32),
             ),
-            tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
+            tf.TensorSpec(shape=(MAX_SEQUENCE_LENGTH - 1,), dtype=tf.int32),
         ),
     )
-    return tf_dataset
+    return train_dataset
 
 
 def evaluate_bleu(model, dataset, src_tokenizer, tgt_tokenizer, max_length=30):
@@ -489,6 +539,42 @@ MOCK_SENTENCES = [
 ]
 
 
+def test_mock_predictions2(
+    model, src_tokenizer, tgt_tokenizer, mock_sentences=MOCK_SENTENCES
+):
+    """
+    Debug preprocessing: show original sentence, token IDs, and decoded sentence.
+    """
+    bos_id = tgt_tokenizer.token_to_id("[BOS]")
+    eos_id = tgt_tokenizer.token_to_id("[EOS]")
+    pad_id = tgt_tokenizer.token_to_id("[PAD]")
+
+    src_texts = [s["english"] for s in mock_sentences]
+    src_texts = normalize_texts(src_texts, lower=True)  # apply lowercase normalization
+
+    src_seqs = preprocess_examples(
+        src_texts=src_texts,
+        src_tokenizer=src_tokenizer,
+        tgt_tokenizer=tgt_tokenizer,
+        max_length=MAX_SEQUENCE_LENGTH,
+        training=False,
+    )
+
+    for i, seq in enumerate(src_seqs):
+        english_text = mock_sentences[i]["english"]
+
+        # Filter out PADs so decode is clean
+        valid_ids = [id for id in seq if id not in [pad_id]]
+
+        # Decode with tokenizer
+        decoded_text = src_tokenizer.decode(valid_ids)
+
+        print("\n---")
+        print(f"Original: {english_text}")
+        print(f"Token IDs: {valid_ids}")
+        print(f"Decoded : {decoded_text}")
+
+
 def test_mock_predictions(
     model, src_tokenizer, tgt_tokenizer, mock_sentences=MOCK_SENTENCES
 ):
@@ -497,31 +583,33 @@ def test_mock_predictions(
     Prints a table: English Input | Expected Persian | Model Prediction
     """
     results = []
+
     bos_id = tgt_tokenizer.token_to_id("[BOS]")
     eos_id = tgt_tokenizer.token_to_id("[EOS]")
     pad_id = tgt_tokenizer.token_to_id("[PAD]")
+    src_texts = [s["english"] for s in mock_sentences]
+    src_texts = normalize_texts(src_texts, lower=True)
+    src_seqs = preprocess_examples(
+        src_texts=[s["english"] for s in mock_sentences],
+        src_tokenizer=src_tokenizer,
+        tgt_tokenizer=tgt_tokenizer,
+        max_length=MAX_SEQUENCE_LENGTH,
+        training=False,
+    )
 
-    for sentence in mock_sentences:
-        english_text = sentence["english"]
-        expected_persian = sentence["persian"]
+    # Iterate over mock sentences and predictions
+    for i, src_seq in enumerate(src_seqs):
+        english_text = mock_sentences[i]["english"]
+        expected_persian = mock_sentences[i]["persian"]
 
-        # Tokenize English for encoder input (add [BOS]/[EOS], pad to max_length)
-        enc_tokens = src_tokenizer.encode(english_text).ids
-        enc_input = (
-            [src_tokenizer.token_to_id("[BOS]")]
-            + enc_tokens
-            + [src_tokenizer.token_to_id("[EOS]")]
-        )
-        enc_input = enc_input[:MAX_SEQUENCE_LENGTH] + [
-            src_tokenizer.token_to_id("[PAD]")
-        ] * (MAX_SEQUENCE_LENGTH - len(enc_input))
-        enc_input = tf.constant([enc_input])  # Batch of 1
+        # Wrap single src_seq into a batch of size 1
+        enc_input = tf.constant([src_seq])
 
-        # Predict Persian tokens
+        # Run model generation
         pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
 
-        # Decode prediction (remove special tokens)
-        pred_ids = pred_tokens[0].numpy()  # First batch item
+        # Decode prediction (remove BOS/EOS/PAD)
+        pred_ids = pred_tokens[0].numpy()
         pred_text = tgt_tokenizer.decode(
             [id for id in pred_ids if id not in [bos_id, eos_id, pad_id]]
         )
@@ -534,12 +622,10 @@ def test_mock_predictions(
             }
         )
 
-    # Beautiful table print
+    # Pretty print results
     results_df = pd.DataFrame(results)
     print("\n=== Mock Sentence Predictions ===")
-    print(
-        results_df.to_string(index=False, max_colwidth=40)
-    )  # Truncate for readability
+    print(results_df.to_string(index=False, max_colwidth=40))
 
 
 def main():
@@ -588,8 +674,10 @@ def main():
         full_data, input_vocab_size, target_vocab_size, lower=True, print_output=True
     )
     print("training tokenizers...")
-    src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)  # persian
-    tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)  # english
+    train_data["src"] = normalize_texts(train_data["src"], lower=True)
+    val_data["src"] = normalize_texts(val_data["src"], lower=True)
+    src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)
+    tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)
 
     print("preprocessing data...")
     train_dataset = preprocess_data(
@@ -673,14 +761,18 @@ def main2():
     src_vocab_size, tgt_vocab_size, _, _ = calculate_vocab_coverage(
         full_data, input_vocab_size, target_vocab_size, lower=True, print_output=True
     )
+    train_data["src"] = normalize_texts(train_data["src"], lower=True)
+    val_data["src"] = normalize_texts(val_data["src"], lower=True)
     print("training tokenizers...")
-    src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)  # persian
-    tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)  # english
+    src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)
+    tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)
 
     print("preprocessing data...")
-    train_dataset, all_good = test_preprocess_data(
-        train_data, src_tokenizer, tgt_tokenizer, max_sequence_length
-    )
+
+    test_mock_predictions2(None, src_tokenizer, tgt_tokenizer)
+
+
+# train_dataset, all_good = test_preprocess_data( train_data, src_tokenizer, tgt_tokenizer, max_sequence_length)
 
 
 def interactive_translate(model, src_tokenizer, tgt_tokenizer):
@@ -730,4 +822,4 @@ def interactive_translate(model, src_tokenizer, tgt_tokenizer):
 
 
 if __name__ == "__main__":
-    main2()
+    main()
