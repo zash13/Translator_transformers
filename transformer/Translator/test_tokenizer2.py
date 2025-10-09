@@ -137,7 +137,9 @@ class EnglishTokenizer(BaseTokenizer):
     def __init__(self, tokenizer=None):
         self.tokenizer = tokenizer
 
-    def train_by_text(self, texts, vocab_size, unk_token="[UNK]") -> bool:
+    def train_by_text(
+        self, texts, vocab_size, unk_token=SpecialToken.UNK.token_str
+    ) -> bool:
         try:
             self.tokenizer = self._create_english_tokenizer(
                 texts, vocab_size, unk_token
@@ -150,7 +152,10 @@ class EnglishTokenizer(BaseTokenizer):
     def _create_english_tokenizer(self, texts, vocab_size, unk_token):
         tokenizer = Tokenizer(WordPiece(unk_token=unk_token))
         tokenizer.pre_tokenizer = Whitespace()
-        trainer = WordPieceTrainer(vocab_size=vocab_size, special_tokens=SPECIAL_TOKENS)
+        trainer = WordPieceTrainer(
+            vocab_size=vocab_size,
+            special_tokens=SpecialToken.all_tokens(),
+        )
         tokenizer.train_from_iterator(texts, trainer=trainer)
         return tokenizer
 
@@ -164,13 +169,14 @@ class EnglishTokenizer(BaseTokenizer):
         if self.tokenizer is None:
             raise ValueError("Tokenizer not trained. Call train_by_text first.")
         encoding = self.tokenizer.encode(text)
+
         if add_special_tokens:
             return encoding.ids
         else:
             ids = encoding.ids
-            if ids and ids[0] == SPECIAL_TOKEN_IDS["[CLS]"]:
+            if ids and ids[0] == SpecialToken.CLS.value:
                 ids = ids[1:]
-            if ids and ids[-1] == SPECIAL_TOKEN_IDS["[SEP]"]:
+            if ids and ids[-1] == SpecialToken.SEP.value:
                 ids = ids[:-1]
             return ids
 
@@ -180,15 +186,10 @@ class EnglishTokenizer(BaseTokenizer):
         return self.tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
 
     def pad(self, batch_ids, max_length=None):
-        if max_length is None:
-            max_len = max(len(seq) for seq in batch_ids)
-        else:
-            max_len = max_length
-
-        padded = []
-        for seq in batch_ids:
-            padded_seq = seq + [SPECIAL_TOKEN_IDS["[PAD]"]] * (max_len - len(seq))
-            padded.append(padded_seq)
+        max_len = max_length or max(len(seq) for seq in batch_ids)
+        padded = [
+            seq + [SpecialToken.PAD.value] * (max_len - len(seq)) for seq in batch_ids
+        ]
         return padded
 
     def get_vocab_size(self):
