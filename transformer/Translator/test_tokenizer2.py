@@ -7,11 +7,40 @@ import pandas as pd
 import os
 
 from abc import ABC, abstractmethod
-from typing import List, Union
+from typing import List
+from enum import Enum, auto
 
 
-SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[PAD]", "[SEP]", "[MASK]"]
+class TokenizerType(Enum):
+    WORDPIECE = auto()
+    HAZM = auto()
+
+
 SPECIAL_TOKEN_IDS = {tok: i for i, tok in enumerate(SPECIAL_TOKENS)}
+SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[PAD]", "[SEP]", "[MASK]"]
+
+
+class SpecialToken(Enum):
+    # in .net, enums can have both a numeric value and a description (using helpers or attributes).
+    # here, i'm trying to apply the same idea in python.
+    # this is how you can use it:
+    #
+    # token = SpecialToken.PAD
+    # print(token.value)       # ➜ 2
+    # print(token.token_str)   # ➜ "[PAD]"
+    # print(str(token))        # ➜ "[PAD]"
+    UNK = (0, "[UNK]")
+    CLS = (1, "[CLS]")
+    PAD = (2, "[PAD]")
+    SEP = (3, "[SEP]")
+    MASK = (4, "[MASK]")
+
+    def __init__(self, value, token_str):
+        self._value_ = value
+        self.token_str = token_str
+
+    def __str__(self):
+        return self.token_str
 
 
 class BaseTokenizer(ABC):
