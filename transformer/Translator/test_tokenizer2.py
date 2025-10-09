@@ -99,6 +99,25 @@ class PersianHazmTokenizer(BaseTokenizer):
             self.vocab.setdefault(tok.token_str, tok.value)
             self.inv_vocab[tok.value] = tok.token_str
 
+    def build_vocab(self, texts, min_freq=2):
+        normalizer = Normalizer()
+        freq = {}
+
+        for line in texts:
+            tokens = word_tokenize(normalizer.normalize(line))
+            for t in tokens:
+                freq[t] = freq.get(t, 0) + 1
+
+        self.vocab = {tok.token_str: tok.value for tok in SpecialToken}
+        idx = len(SpecialToken)
+
+        for t, c in sorted(freq.items(), key=lambda x: -x[1]):
+            if c >= min_freq:
+                self.vocab[t] = idx
+                idx += 1
+
+        self.inv_vocab = {v: k for k, v in self.vocab.items()}
+
     def tokenize(self, text):
         normalized = self.normalizer.normalize(text)
         tokens = word_tokenize(normalized)
@@ -204,23 +223,6 @@ def create_english_tokenizer(texts, vocab_size):
     trainer = WordPieceTrainer(vocab_size=vocab_size, special_tokens=SPECIAL_TOKENS)
     tokenizer.train_from_iterator(texts, trainer=trainer)
     return tokenizer
-
-
-def build_persian_vocab(texts, min_freq=2):
-    normalizer = Normalizer()
-    freq = {}
-    for line in texts:
-        tokens = word_tokenize(normalizer.normalize(line))
-        for t in tokens:
-            freq[t] = freq.get(t, 0) + 1
-
-    vocab = dict(SPECIAL_TOKEN_IDS)
-    idx = len(SPECIAL_TOKEN_IDS)
-    for t, c in sorted(freq.items(), key=lambda x: -x[1]):
-        if c >= min_freq:
-            vocab[t] = idx
-            idx += 1
-    return vocab
 
 
 src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
