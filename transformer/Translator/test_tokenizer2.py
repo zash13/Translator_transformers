@@ -6,23 +6,17 @@ from tokenizers.pre_tokenizers import Whitespace
 import pandas as pd
 import os
 
-# -----------------------------
-# 1. Shared Special Tokens
-# -----------------------------
+
 SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[PAD]", "[SEP]", "[MASK]"]
 SPECIAL_TOKEN_IDS = {tok: i for i, tok in enumerate(SPECIAL_TOKENS)}
 
 
-# -----------------------------
-# 2. Persian Tokenizer (Hazm)
-# -----------------------------
 class PersianHazmTokenizer:
     def __init__(self, vocab=None):
         self.normalizer = Normalizer()
         self.vocab = vocab or {}
         self.inv_vocab = {v: k for k, v in self.vocab.items()}
 
-        # Ensure special tokens exist in vocab
         for tok, idx in SPECIAL_TOKEN_IDS.items():
             self.vocab.setdefault(tok, idx)
             self.inv_vocab[idx] = tok
@@ -59,9 +53,65 @@ class PersianHazmTokenizer:
         return padded
 
 
-# -----------------------------
-# 3. English Tokenizer
-# -----------------------------
+class EnglishTokenizer:
+    def __init__(self, tokenizer=None):
+        self.tokenizer = tokenizer
+
+    def train_by_text(self, texts, vocab_size, unk_token="[UNK]") -> bool:
+        try:
+            self.tokenizer = self._create_english_tokenizer(
+                texts, vocab_size, unk_token
+            )
+            return True
+        except Exception as e:
+            print(f"Something wrong happened: {e}")
+            return False
+
+    def _create_english_tokenizer(self, texts, vocab_size, unk_token):
+        tokenizer = Tokenizer(WordPiece(unk_token=unk_token))
+        tokenizer.pre_tokenizer = Whitespace()
+        trainer = WordPieceTrainer(vocab_size=vocab_size, special_tokens=SPECIAL_TOKENS)
+        tokenizer.train_from_iterator(texts, trainer=trainer)
+        return tokenizer
+
+    def tokenize(self, text):
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer not trained. Call train_by_text first.")
+        encoding = self.tokenizer.encode(text)
+        return encoding.tokens
+
+    def encode(self, text, add_special_tokens=True):
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer not trained. Call train_by_text first.")
+        encoding = self.tokenizer.encode(text)
+        if add_special_tokens:
+            return encoding.ids
+        else:
+            ids = encoding.ids
+            if ids and ids[0] == SPECIAL_TOKEN_IDS["[CLS]"]:
+                ids = ids[1:]
+            if ids and ids[-1] == SPECIAL_TOKEN_IDS["[SEP]"]:
+                ids = ids[:-1]
+            return ids
+
+    def decode(self, token_ids, skip_special_tokens=True):
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer not trained. Call train_by_text first.")
+        return self.tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
+
+    def pad(self, batch_ids, max_length=None):
+        if max_length is None:
+            max_len = max(len(seq) for seq in batch_ids)
+        else:
+            max_len = max_length
+
+        padded = []
+        for seq in batch_ids:
+            padded_seq = seq + [SPECIAL_TOKEN_IDS["[PAD]"]] * (max_len - len(seq))
+            padded.append(padded_seq)
+        return padded
+
+
 def create_english_tokenizer(texts, vocab_size):
     tokenizer = Tokenizer(WordPiece(unk_token="[UNK]"))
     tokenizer.pre_tokenizer = Whitespace()
@@ -70,9 +120,6 @@ def create_english_tokenizer(texts, vocab_size):
     return tokenizer
 
 
-# -----------------------------
-# 4. Persian Vocab Builder
-# -----------------------------
 def build_persian_vocab(texts, min_freq=2):
     normalizer = Normalizer()
     freq = {}
@@ -81,7 +128,7 @@ def build_persian_vocab(texts, min_freq=2):
         for t in tokens:
             freq[t] = freq.get(t, 0) + 1
 
-    vocab = dict(SPECIAL_TOKEN_IDS)  # start with special tokens
+    vocab = dict(SPECIAL_TOKEN_IDS)
     idx = len(SPECIAL_TOKEN_IDS)
     for t, c in sorted(freq.items(), key=lambda x: -x[1]):
         if c >= min_freq:
@@ -90,9 +137,6 @@ def build_persian_vocab(texts, min_freq=2):
     return vocab
 
 
-# -----------------------------
-# 5. Load Dataset
-# -----------------------------
 src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
 tgt_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.fa")
 
@@ -105,9 +149,6 @@ def read_data(src_file, tgt_file):
     return pd.DataFrame({"src": src_data, "tgt": tgt_data})
 
 
-# -----------------------------
-# 6. Test Everything
-# -----------------------------
 print("loading TEP data...")
 full_data = read_data(src_file, tgt_file)
 
@@ -120,21 +161,20 @@ persian_vocab = build_persian_vocab(full_data["tgt"])
 print("Initializing Persian tokenizer...")
 persian_tokenizer = PersianHazmTokenizer(vocab=persian_vocab)
 
-# Samples
+
 sample_persian = "من به مدرسه می‌روم."
 sample_english = "I am going to school."
 
 persian_ids = persian_tokenizer.encode(sample_persian)
 print("Persian IDs:", persian_ids)
 print("Decoded Persian:", persian_tokenizer.decode(persian_ids))
-# Encode your text first
+
 persian_ids = persian_tokenizer.encode(sample_persian)
 print("Original Persian IDs:", persian_ids)
 print("Original length:", len(persian_ids))
 
-# Pad to length 30
+
 padded_ids = persian_tokenizer.pad([persian_ids], max_length=30)[0]
 print("Padded Persian IDs:", padded_ids)
 print("Padded length:", len(padded_ids))
 print("Decoded Persian (with padding):", persian_tokenizer.decode(padded_ids))
-
