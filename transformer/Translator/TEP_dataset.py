@@ -9,7 +9,12 @@ import sacrebleu
 import keras
 from tqdm import tqdm
 from tokenizers import Tokenizer
+from transformers import AutoTokenizer
 
+from EncoderStack import EncoderStack
+from DecoderStack import DecoderStack
+from TokenEmbedding import TokenEmbedding
+from PositionalEncoding import positional_encoding
 
 gpus = tf.config.list_physical_devices("GPU")
 print("Num GPUs available:", len(gpus))
@@ -20,14 +25,7 @@ INPUT_VOCAB_SIZE = 90000
 TARGET_VOCAB_SIZE = 120000
 BATCH_SIZE = 64
 EPOCHS = 3
-SPECIAL_TOKENS = ["[UNK]", "[PAD]", "[BOS]", "[EOS]"]
-
-import keras
-from EncoderStack import EncoderStack
-from DecoderStack import DecoderStack
-from TokenEmbedding import TokenEmbedding
-from PositionalEncoding import positional_encoding
-import tensorflow as tf
+SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]"]
 
 
 def normalize_texts(texts, lower=True, strip=True):
@@ -139,7 +137,7 @@ class Translator(keras.Model):
             enc_emb, training=False, padding_mask=enc_padding_mask
         )
 
-        # Initialize with <BOS>
+        # Initialize with <CLS>
         decoded = tf.fill([batch_size, 1], start_token)
         finished = tf.zeros([batch_size], dtype=tf.bool)
 
@@ -183,7 +181,7 @@ class Translator(keras.Model):
                 inputs = encoder outputs
                 max_sequence_length = maximum length of the generated sequence ( incude the start and end and stuff )
                 start_token = integer id of the start of seq , like 1 for <sos>
-                end_token = integer id of the end of seq , like 2 for <eos>
+                end_token = integer id of the end of seq , like 2 for <sep>
 
             Returns:
                 Generated sequence tensor of shape (batch, max_len).
@@ -288,19 +286,62 @@ def create_tokenizer(texts, vocab_size):
     return tokenizer
 
 
+# try to load persian tokenizer
+SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]"]
+
+
+def create_persian_tokenizer():
+    """Create tokenizer for Persian using Persian BPETokenizer"""
+    try:
+        persian_tokenizer = AutoTokenizer.from_pretrained(
+            "mshojaei77/PersianBPETokenizer"
+        )
+        print("Successfully loaded PersianBPETokenizer")
+
+        # they all are missing , i should add them all
+        print(f"Current special tokens:")
+        print(f"  CLS: {persian_tokenizer.cls_token}")
+        print(f"  SEP: {persian_tokenizer.sep_token}")
+        print(f"  PAD: {persian_tokenizer.pad_token}")
+        print(f"  UNK: {persian_tokenizer.unk_token}")
+        print(f"  MASK: {persian_tokenizer.mask_token}")
+
+        special_tokens_dict = {}
+        if persian_tokenizer.cls_token is None:
+            special_tokens_dict["cls_token"] = "[CLS]"
+        if persian_tokenizer.sep_token is None:
+            special_tokens_dict["sep_token"] = "[SEP]"
+        if persian_tokenizer.pad_token is None:
+            special_tokens_dict["pad_token"] = "[PAD]"
+        if persian_tokenizer.mask_token is None:
+            special_tokens_dict["mask_token"] = "[MASK]"
+
+        if special_tokens_dict:
+            persian_tokenizer.add_special_tokens(special_tokens_dict)
+            print(f"Added special tokens: {list(special_tokens_dict.keys())}")
+        else:
+            print("All special tokens already present")
+
+        return persian_tokenizer
+
+    except Exception as e:
+        print(f"Could not load tokenizer: {e}")
+        return None
+
+
 def test_preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length):
     pad_id_src = src_tokenizer.token_to_id("[PAD]")
     pad_id_tgt = tgt_tokenizer.token_to_id("[PAD]")
-    bos_id_src = src_tokenizer.token_to_id("[BOS]")
-    eos_id_src = src_tokenizer.token_to_id("[EOS]")
-    bos_id_tgt = tgt_tokenizer.token_to_id("[BOS]")
-    eos_id_tgt = tgt_tokenizer.token_to_id("[EOS]")
+    cls_id_src = src_tokenizer.token_to_id("[CLS]")
+    sep_id_src = src_tokenizer.token_to_id("[SEP]")
+    cls_id_tgt = tgt_tokenizer.token_to_id("[CLS]")
+    sep_id_tgt = tgt_tokenizer.token_to_id("[SEP]")
 
     with open("preprocess_log.txt", "w") as log:
         log.write(
             f"Source PAD: {pad_id_src}, Target PAD: {pad_id_tgt}\n"
-            f"Source BOS: {bos_id_src}, Source EOS: {eos_id_src}\n"
-            f"Target BOS: {bos_id_tgt}, Target EOS: {eos_id_tgt}\n\n"
+            f"Source CLS: {cls_id_src}, Source SEP: {sep_id_src}\n"
+            f"Target CLS: {cls_id_tgt}, Target SEP: {sep_id_tgt}\n\n"
         )
 
         tf_dataset = preprocess_data(
@@ -344,17 +385,17 @@ def test_preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length):
                 "src_length": len(src_np) == max_length,
                 "tgt_in_length": len(tgt_in_np) == max_length - 1,
                 "tgt_out_length": len(tgt_out_np) == max_length - 1,
-                "src_starts_bos": src_np[0] == bos_id_src,
-                "src_ends_eos": seq_len_src > 0
-                and src_np[seq_len_src - 1] == eos_id_src,
+                "src_starts_cls": src_np[0] == cls_id_src,
+                "src_ends_sep": seq_len_src > 0
+                and src_np[seq_len_src - 1] == sep_id_src,
                 "src_pads_after": all(
                     src_np[j] == pad_id_src for j in range(seq_len_src, len(src_np))
                 ),
-                "tgt_in_starts_bos": tgt_in_np[0] == bos_id_tgt,
-                "tgt_in_ends_no_eos": seq_len_tgt > 0
-                and tgt_in_np[seq_len_tgt - 1] != eos_id_tgt,
-                "tgt_out_ends_eos_pos": seq_len_tgt > 0
-                and tgt_out_np[seq_len_tgt - 1] == eos_id_tgt,
+                "tgt_in_starts_cls": tgt_in_np[0] == cls_id_tgt,
+                "tgt_in_ends_no_sep": seq_len_tgt > 0
+                and tgt_in_np[seq_len_tgt - 1] != sep_id_tgt,
+                "tgt_out_ends_sep_pos": seq_len_tgt > 0
+                and tgt_out_np[seq_len_tgt - 1] == sep_id_tgt,
                 "tgt_out_pads_after": all(
                     tgt_out_np[j] == pad_id_tgt
                     for j in range(seq_len_tgt, len(tgt_out_np))
@@ -363,7 +404,7 @@ def test_preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length):
                 or all(
                     tgt_out_np[j] == tgt_in_np[j + 1] for j in range(seq_len_tgt - 1)
                 ),
-                "tgt_out_starts_no_bos": tgt_out_np[0] != bos_id_tgt
+                "tgt_out_starts_no_cls": tgt_out_np[0] != cls_id_tgt
                 if seq_len_tgt > 1
                 else True,
             }
@@ -399,6 +440,8 @@ def test_preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length):
     return results, all_good
 
 
+# this method is larget , becase its try to work with both tokenizer and parsbert which i load there for persian ,
+# the design is wrong , i know , i will change it
 def preprocess_examples(
     src_texts,
     tgt_texts=None,
@@ -407,48 +450,66 @@ def preprocess_examples(
     max_length=30,
     training=True,
 ):
-    """
-    this is a generate method to preprocess the data
-    preprocesses source (and optionally target) texts into padded token ids.
-
-    args:
-        src_texts (str or list[str]): source sentence(s).
-        tgt_texts (str or list[str], optional): target sentence(s). required in training.
-        training (bool): if true → returns (src, tgt_in, tgt_out).
-                         if false → returns only (src,).
-
-    returns:
-        if training=true:
-            list of (src, tgt_in, tgt_out) arrays
-        if training=false:
-            list of src arrays
-    """
-
+    """Universal preprocessing — works for HF and tokenizers library."""
     if isinstance(src_texts, str):
         src_texts = [src_texts]
     if tgt_texts is not None and isinstance(tgt_texts, str):
         tgt_texts = [tgt_texts]
 
-    pad_id_src = src_tokenizer.token_to_id("[PAD]")
-    pad_id_tgt = tgt_tokenizer.token_to_id("[PAD]")
-    bos_id_src = src_tokenizer.token_to_id("[BOS]")
-    eos_id_src = src_tokenizer.token_to_id("[EOS]")
-    bos_id_tgt = tgt_tokenizer.token_to_id("[BOS]")
-    eos_id_tgt = tgt_tokenizer.token_to_id("[EOS]")
-
     results = []
 
+    def get_id(tokenizer, token):
+        if hasattr(tokenizer, "token_to_id"):
+            id_ = tokenizer.token_to_id(token)
+        elif hasattr(tokenizer, "convert_tokens_to_ids"):
+            id_ = tokenizer.convert_tokens_to_ids(token)
+        else:
+            id_ = None
+        if id_ is None:
+            # fallback to tokenizer.unk_token_id or 0
+            id_ = getattr(tokenizer, "unk_token_id", 0)
+        return id_
+
+    tgt_tokenizer.add_special_tokens(
+        {"cls_token": "[CLS]", "sep_token": "[SEP]", "pad_token": "[PAD]"}
+    )
+    print(tgt_tokenizer.all_special_tokens)
+    print(tgt_tokenizer.all_special_ids)
+    pad_id_src = get_id(src_tokenizer, "[PAD]")
+    cls_id_src = get_id(src_tokenizer, "[CLS]")
+    sep_id_src = get_id(src_tokenizer, "[SEP]")
+
+    pad_id_tgt = get_id(tgt_tokenizer, "[PAD]")
+    cls_id_tgt = get_id(tgt_tokenizer, "[CLS]")
+    sep_id_tgt = get_id(tgt_tokenizer, "[SEP]")
+
+    print(f"{pad_id_tgt} , {cls_id_tgt} ,{sep_id_tgt}")
     for i, src_text in enumerate(src_texts):
-        src_ids = src_tokenizer.encode(src_text).ids[: max_length - 2]
-        src_seq = [bos_id_src] + src_ids + [eos_id_src]
+        # === SOURCE ===
+        if hasattr(src_tokenizer, "encode"):  # tokenizers.Tokenizer
+            encoded = src_tokenizer.encode(src_text)
+            src_ids = encoded.ids if hasattr(encoded, "ids") else encoded
+        else:  # HF tokenizer
+            src_ids = src_tokenizer(src_text, add_special_tokens=False)["input_ids"]
+
+        src_ids = src_ids[: max_length - 2]
+        src_seq = [cls_id_src] + src_ids + [sep_id_src]
         src_seq = src_seq[:max_length] + [pad_id_src] * (max_length - len(src_seq))
 
-        if training:
+        if training and tgt_texts is not None:
             tgt_text = tgt_texts[i]
-            tgt_ids = tgt_tokenizer.encode(tgt_text).ids[: max_length - 2]
-            tgt_seq = [bos_id_tgt] + tgt_ids + [eos_id_tgt]
 
-            # Shifted
+            # === TARGET ===
+            if hasattr(tgt_tokenizer, "encode"):  # tokenizers.Tokenizer
+                encoded = tgt_tokenizer.encode(tgt_text)
+                tgt_ids = encoded.ids if hasattr(encoded, "ids") else encoded
+            else:  # HF tokenizer
+                tgt_ids = tgt_tokenizer(tgt_text, add_special_tokens=False)["input_ids"]
+
+            # now process as before
+            tgt_ids = tgt_ids[: max_length - 2]
+            tgt_seq = [cls_id_tgt] + tgt_ids + [sep_id_tgt]
+
             tgt_in = tgt_seq[:-1]
             tgt_out = tgt_seq[1:]
 
@@ -488,10 +549,10 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
         gen,
         output_signature=(
             (
-                tf.TensorSpec(shape=(MAX_SEQUENCE_LENGTH,), dtype=tf.int32),
-                tf.TensorSpec(shape=(MAX_SEQUENCE_LENGTH - 1,), dtype=tf.int32),
+                tf.TensorSpec(shape=(max_length,), dtype=tf.int32),
+                tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
             ),
-            tf.TensorSpec(shape=(MAX_SEQUENCE_LENGTH - 1,), dtype=tf.int32),
+            tf.TensorSpec(shape=(max_length - 1,), dtype=tf.int32),
         ),
     )
     return train_dataset
@@ -500,21 +561,21 @@ def preprocess_data(data, src_tokenizer, tgt_tokenizer, max_length=30):
 def evaluate_bleu(model, dataset, src_tokenizer, tgt_tokenizer, max_length=30):
     refs, hyps = [], []
     for (src, _), tgt_out in dataset:
-        bos_id = src_tokenizer.token_to_id("[BOS]")
-        eos_id = src_tokenizer.token_to_id("[EOS]")
-        pred = model.generate(src, 30, bos_id, eos_id)
+        cls_id = src_tokenizer.token_to_id("[CLS]")
+        sep_id = src_tokenizer.token_to_id("[SEP]")
+        pred = model.generate(src, 30, cls_id, sep_id)
         print("Raw prediction IDs:", pred[0].numpy())
         print("Decoded text:", tgt_tokenizer.decode(pred[0].numpy()))
         pred = model.generate(
             src,
             max_length,
-            start_token=tgt_tokenizer.token_to_id("[BOS]"),
-            end_token=tgt_tokenizer.token_to_id("[EOS]"),
+            start_token=tgt_tokenizer.token_to_id("[CLS]"),
+            end_token=tgt_tokenizer.token_to_id("[SEP]"),
         )
         for p, t in zip(pred.numpy(), tgt_out.numpy()):
             p = [id for id in p if id != tgt_tokenizer.token_to_id("[PAD]")]
             t = [id for id in t if id != tgt_tokenizer.token_to_id("[PAD]")]
-            hyp = tgt_tokenizer.decode(p[1:])  # Skip [BOS]
+            hyp = tgt_tokenizer.decode(p[1:])  # Skip [CLS]
             ref = tgt_tokenizer.decode(t)
             hyps.append(hyp)
             refs.append([ref])  # sacrebleu expects list of refs
@@ -545,8 +606,8 @@ def test_mock_predictions2(
     """
     Debug preprocessing: show original sentence, token IDs, and decoded sentence.
     """
-    bos_id = tgt_tokenizer.token_to_id("[BOS]")
-    eos_id = tgt_tokenizer.token_to_id("[EOS]")
+    cls_id = tgt_tokenizer.token_to_id("[CLS]")
+    sep_id = tgt_tokenizer.token_to_id("[SEP]")
     pad_id = tgt_tokenizer.token_to_id("[PAD]")
 
     src_texts = [s["english"] for s in mock_sentences]
@@ -584,8 +645,8 @@ def test_mock_predictions(
     """
     results = []
 
-    bos_id = tgt_tokenizer.token_to_id("[BOS]")
-    eos_id = tgt_tokenizer.token_to_id("[EOS]")
+    cls_id = tgt_tokenizer.token_to_id("[CLS]")
+    sep_id = tgt_tokenizer.token_to_id("[SEP]")
     pad_id = tgt_tokenizer.token_to_id("[PAD]")
     src_texts = [s["english"] for s in mock_sentences]
     src_texts = normalize_texts(src_texts, lower=True)
@@ -606,12 +667,12 @@ def test_mock_predictions(
         enc_input = tf.constant([src_seq])
 
         # Run model generation
-        pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
+        pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, cls_id, sep_id)
 
-        # Decode prediction (remove BOS/EOS/PAD)
+        # Decode prediction (remove CLS/SEP/PAD)
         pred_ids = pred_tokens[0].numpy()
         pred_text = tgt_tokenizer.decode(
-            [id for id in pred_ids if id not in [bos_id, eos_id, pad_id]]
+            [id for id in pred_ids if id not in [cls_id, sep_id, pad_id]]
         )
 
         results.append(
@@ -764,11 +825,18 @@ def main2():
     train_data["src"] = normalize_texts(train_data["src"], lower=True)
     val_data["src"] = normalize_texts(val_data["src"], lower=True)
     print("training tokenizers...")
-    src_tokenizer = create_tokenizer(train_data["src"], INPUT_VOCAB_SIZE)
-    tgt_tokenizer = create_tokenizer(train_data["tgt"], TARGET_VOCAB_SIZE)
+    src_tokenizer = create_tokenizer(train_data["src"], input_vocab_size)
+    tgt_tokenizer = create_persian_tokenizer()
 
     print("preprocessing data...")
+    train_dataset = preprocess_data(
+        train_data, src_tokenizer, tgt_tokenizer, max_length=max_sequence_length
+    )
+    val_dataset = preprocess_data(
+        val_data, src_tokenizer, tgt_tokenizer, max_length=max_sequence_length
+    )
 
+    # you can test it with:
     test_mock_predictions2(None, src_tokenizer, tgt_tokenizer)
 
 
@@ -780,8 +848,8 @@ def interactive_translate(model, src_tokenizer, tgt_tokenizer):
     Interactive mode: User inputs English sentence, model translates to Persian.
     Type 'quit' to exit.
     """
-    bos_id = tgt_tokenizer.token_to_id("[BOS]")
-    eos_id = tgt_tokenizer.token_to_id("[EOS]")
+    cls_id = tgt_tokenizer.token_to_id("[CLS]")
+    sep_id = tgt_tokenizer.token_to_id("[SEP]")
     pad_id = tgt_tokenizer.token_to_id("[PAD]")
 
     print("\n=== Interactive Translation Mode ===")
@@ -797,12 +865,12 @@ def interactive_translate(model, src_tokenizer, tgt_tokenizer):
             print("Please enter a valid sentence.")
             continue
 
-        # Tokenize English for encoder input (add [BOS]/[EOS], pad)
+        # Tokenize English for encoder input (add [CLS]/[SEP], pad)
         enc_tokens = src_tokenizer.encode(english_text).ids
         enc_input = (
-            [src_tokenizer.token_to_id("[BOS]")]
+            [src_tokenizer.token_to_id("[CLS]")]
             + enc_tokens
-            + [src_tokenizer.token_to_id("[EOS]")]
+            + [src_tokenizer.token_to_id("[SEP]")]
         )
         enc_input = enc_input[:MAX_SEQUENCE_LENGTH] + [
             src_tokenizer.token_to_id("[PAD]")
@@ -810,16 +878,29 @@ def interactive_translate(model, src_tokenizer, tgt_tokenizer):
         enc_input = tf.constant([enc_input])  # Batch of 1
 
         # Predict Persian tokens
-        pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, bos_id, eos_id)
+        pred_tokens = model.generate(enc_input, MAX_SEQUENCE_LENGTH, cls_id, sep_id)
 
         # Decode prediction (remove special tokens)
         pred_ids = pred_tokens[0].numpy()  # First batch item
         pred_text = tgt_tokenizer.decode(
-            [id for id in pred_ids if id not in [bos_id, eos_id, pad_id]]
+            [id for id in pred_ids if id not in [cls_id, sep_id, pad_id]]
         )
 
         print(f"Translation: {pred_text}\n")
 
 
+def main3():
+    persian_tokenizer = create_persian_tokenizer()
+    test = preprocess_examples(
+        src_texts=["Hello world"],
+        tgt_texts=["سلام دنیا"],
+        src_tokenizer=create_tokenizer(["Hello world"], 100),
+        tgt_tokenizer=persian_tokenizer,
+        training=True,
+    )
+
+    print(f"test message : {test[0]}")
+
+
 if __name__ == "__main__":
-    main()
+    main3()
