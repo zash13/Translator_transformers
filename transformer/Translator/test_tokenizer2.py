@@ -42,6 +42,24 @@ class SpecialToken(Enum):
     def __str__(self):
         return self.token_str
 
+    @classmethod
+    def by_token(cls, token_str):
+        """find enum by token string."""
+        for tok in cls:
+            if tok.token_str == token_str:
+                return tok
+        raise ValueError(f"unknown special token: {token_str}")
+
+    @classmethod
+    def all_tokens(cls):
+        """return list of token strings like ['[unk]'..]"""
+        return [tok.token_str for tok in cls]
+
+    @classmethod
+    def as_dict(cls):
+        """return mapping {token_str: id}"""
+        return {tok.token_str: tok.value for tok in cls}
+
 
 class BaseTokenizer(ABC):
     @abstractmethod
