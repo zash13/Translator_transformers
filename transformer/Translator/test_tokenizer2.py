@@ -6,12 +6,43 @@ from tokenizers.pre_tokenizers import Whitespace
 import pandas as pd
 import os
 
+from abc import ABC, abstractmethod
+from typing import List, Union
+
 
 SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[PAD]", "[SEP]", "[MASK]"]
 SPECIAL_TOKEN_IDS = {tok: i for i, tok in enumerate(SPECIAL_TOKENS)}
 
 
-class PersianHazmTokenizer:
+class BaseTokenizer(ABC):
+    @abstractmethod
+    def tokenize(self, text: str) -> List[str]:
+        """Tokenize text into tokens"""
+        pass
+
+    @abstractmethod
+    def encode(self, text: str, add_special_tokens: bool = True) -> List[int]:
+        """Encode text into token IDs"""
+        pass
+
+    @abstractmethod
+    def decode(self, token_ids: List[int], skip_special_tokens: bool = True) -> str:
+        """Decode token IDs back to text"""
+        pass
+
+    @abstractmethod
+    def pad(
+        self, batch_ids: List[List[int]], max_length: int = None
+    ) -> List[List[int]]:
+        """Pad a batch of token ID sequences"""
+        pass
+
+    def get_vocab_size(self) -> int:
+        """Get vocabulary size (optional)"""
+        raise NotImplementedError
+
+
+class PersianHazmTokenizer(BaseTokenizer):
     def __init__(self, vocab=None):
         self.normalizer = Normalizer()
         self.vocab = vocab or {}
@@ -52,8 +83,11 @@ class PersianHazmTokenizer:
             padded.append(padded_seq)
         return padded
 
+    def get_vocab_size(self):
+        return len(self.vocab)
 
-class EnglishTokenizer:
+
+class EnglishTokenizer(BaseTokenizer):
     def __init__(self, tokenizer=None):
         self.tokenizer = tokenizer
 
@@ -110,6 +144,11 @@ class EnglishTokenizer:
             padded_seq = seq + [SPECIAL_TOKEN_IDS["[PAD]"]] * (max_len - len(seq))
             padded.append(padded_seq)
         return padded
+
+    def get_vocab_size(self):
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer not trained. Call train_by_text first.")
+        return self.tokenizer.get_vocab_size()
 
 
 def create_english_tokenizer(texts, vocab_size):
