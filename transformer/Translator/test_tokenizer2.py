@@ -95,9 +95,9 @@ class PersianHazmTokenizer(BaseTokenizer):
         self.vocab = vocab or {}
         self.inv_vocab = {v: k for k, v in self.vocab.items()}
 
-        for tok, idx in SPECIAL_TOKEN_IDS.items():
-            self.vocab.setdefault(tok, idx)
-            self.inv_vocab[idx] = tok
+        for tok in SpecialToken:
+            self.vocab.setdefault(tok.token_str, tok.value)
+            self.inv_vocab[tok.value] = tok.token_str
 
     def tokenize(self, text):
         normalized = self.normalizer.normalize(text)
@@ -106,18 +106,17 @@ class PersianHazmTokenizer(BaseTokenizer):
 
     def encode(self, text, add_special_tokens=True):
         tokens = self.tokenize(text)
-        token_ids = [self.vocab.get(t, SPECIAL_TOKEN_IDS["[UNK]"]) for t in tokens]
+        token_ids = [self.vocab.get(t, SpecialToken.UNK.value) for t in tokens]
+
         if add_special_tokens:
-            token_ids = (
-                [SPECIAL_TOKEN_IDS["[CLS]"]] + token_ids + [SPECIAL_TOKEN_IDS["[SEP]"]]
-            )
+            token_ids = [SpecialToken.CLS.value] + token_ids + [SpecialToken.SEP.value]
         return token_ids
 
     def decode(self, token_ids, skip_special_tokens=True):
         tokens = []
         for tid in token_ids:
-            tok = self.inv_vocab.get(tid, "[UNK]")
-            if skip_special_tokens and tok in SPECIAL_TOKENS:
+            tok = self.inv_vocab.get(tid, SpecialToken.UNK.token_str)
+            if skip_special_tokens and tok in SpecialToken.all_tokens():
                 continue
             tokens.append(tok)
         return " ".join(tokens)
@@ -126,7 +125,7 @@ class PersianHazmTokenizer(BaseTokenizer):
         max_len = max_length or max(len(seq) for seq in batch_ids)
         padded = []
         for seq in batch_ids:
-            padded_seq = seq + [SPECIAL_TOKEN_IDS["[PAD]"]] * (max_len - len(seq))
+            padded_seq = seq + [SpecialToken.PAD.value] * (max_len - len(seq))
             padded.append(padded_seq)
         return padded
 
