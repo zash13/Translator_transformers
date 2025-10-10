@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from enum import Enum, auto
 from typing import List
 
+from numpy import not_equal
 import pandas as pd
 from hazm import Normalizer, word_tokenize
 from tokenizers import Tokenizer
@@ -64,6 +65,7 @@ class SpecialToken(Enum):
 
 class BaseTokenizer(ABC):
     @classmethod
+    @abstractmethod
     def required_args(cls) -> Dict[str, str]:
         """return a list of required arguments for building this tokenizer"""
         pass
@@ -278,45 +280,58 @@ class EnglishTokenizer(BaseTokenizer):
 
 
 class TokenizerBuilder:
-    """
-    A Builder class for creating and training tokenizers.
+    """ """
 
-    Example usage:
+    def __init__(self):
+        self._type: Optional[TokenizerType] = None
+        self._params = {}
+        self._tokenizer_cls = None
 
-        builder = TokenizerBuilder()
-        hazm_tokenizer = (
-            builder
-            .set_type(TokenizerType.HAZM)
-            .set_training_data(texts)
-            .set_min_freq(2)
-            .build()
-        )
+    @classmethod
+    def _print_args(cls, items_list) -> None:
+        for arg, desc in items_list:
+            print(f"  - {arg}: {desc}")
 
-        english_tokenizer = (
-            builder
-            .set_type(TokenizerType.WORDPIECE)
-            .set_training_data(texts)
-            .set_vocab_size(5000)
-            .build()
-        )
-    """
-
-    def __init__(self) -> None:
-        pass
-
-    def CreateToeknizer(self, tokenizerType: TokenizerType) -> BaseTokenizer:
+    @classmethod
+    def show_requirements(cls, tokenizerType: TokenizerType):
         if tokenizerType == TokenizerType.HAZM:
-            return PersianHazmTokenizer
-        if tokenizerType == TokenizerType.WORDPIECE:
-            return EnglishTokenizer
+            cls._print_args(PersianHazmTokenizer.required_args().items())
+        elif tokenizerType == TokenizerType.WORDPIECE:
+            cls._print_args(EnglishTokenizer.required_args().items())
 
+    def set_type(self, tokenizerType: TokenizerType):
+        """specify which tokenizer to build"""
+        self._type = tokenizerType
+        # this is the fluent interface , or method chaining , the core of builder pattern
+        # https://dev.to/mandrewcito/fluent-interface-in-python-5b4n
+        return self
 
-def create_english_tokenizer(texts, vocab_size):
-    tokenizer = Tokenizer(WordPiece(unk_token="[UNK]"))
-    tokenizer.pre_tokenizer = Whitespace()
-    trainer = WordPieceTrainer(vocab_size=vocab_size, special_tokens=SPECIAL_TOKENS)
-    tokenizer.train_from_iterator(texts, trainer=trainer)
-    return tokenizer
+    def set_params(self, **kwargs):
+        if not self._type:
+            raise ValueError("You must set_type  a tokenizer  first.")
+        self._params.update(kwargs)
+        return self
+
+    def _choose_tokenizer(self):
+        if self._type == TokenizerType.HAZM:
+            self._tokenizer_cls = PersianHazmTokenizer
+        elif self._type == TokenizerType.WORDPIECE:
+            self._tokenizer_cls = EnglishTokenizer
+        return self
+
+    def build(self):
+        """build the tokenizer with the provided parameters"""
+        if not self._type:
+            raise ValueError("You must set_type  a tokenizer  first.")
+        self._choose_tokenizer()
+        required_args = self._tokenizer_cls.required_args()
+        missing_args = [arg for arg in required_args if arg not in self._params]
+        if missing_args:
+            raise ValueError(f"Missing required arguments: {missing_args}")
+        tokenizer = self._tokenizer_cls()
+        tokenizer.build(**self._params)
+        print(f"{self._tokenizer_cls.__name__} successfully built ")
+        return tokenizer
 
 
 src_file = os.path.join("..", "..", "datasets", "TEP", "TEP.en-fa.en")
