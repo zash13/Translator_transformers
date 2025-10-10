@@ -3,66 +3,58 @@ from abc import ABC, abstractmethod
 from enum import Enum, auto
 from typing import List
 
-from numpy import not_equal
 import pandas as pd
 from hazm import Normalizer, word_tokenize
 from tokenizers import Tokenizer
 from tokenizers.models import WordPiece
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.trainers import WordPieceTrainer
-from typing import Dict
-
-
-class TokenizerType(Enum):
-    WORDPIECE = auto()
-    HAZM = auto()
-
-
-# keep the enum clean
-TOKENIZER_REGISTRY = {
-    TokenizerType.HAZM: PersianHazmTokenizer,
-    TokenizerType.WORDPIECE: EnglishTokenizer,
-}
+from typing import Dict, Optional
 
 
 class SpecialToken(Enum):
-    # in .net, enums can have both a numeric value and a description (using helpers or attributes).
-    # here, i'm trying to apply the same idea in python.
-    # this is how you can use it:
-    #
-    # token = SpecialToken.PAD
-    # print(token.value)       # ➜ 2
-    # print(token.token_str)   # ➜ "[PAD]"
-    # print(str(token))        # ➜ "[PAD]"
+    """
+    enum representing special tokens with both numeric id (value)
+    and string representation (token_str).
+    this is how you can use it:
+
+    token = SpecialToken.PAD
+    print(token.value)       # ➜ 2
+    print(token.token_str)   # ➜ "[PAD]"
+    print(str(token))        # ➜ "[PAD]"
+    """
+
     UNK = (0, "[UNK]")
     CLS = (1, "[CLS]")
     PAD = (2, "[PAD]")
     SEP = (3, "[SEP]")
     MASK = (4, "[MASK]")
 
-    def __init__(self, value, token_str):
-        self._value_ = value
-        self.token_str = token_str
+    def __new__(cls, value, token_str):
+        obj = object.__new__(cls)
+        obj._value_ = value  # numeric ID
+        obj.token_str = token_str  # string label
+        return obj
 
     def __str__(self):
         return self.token_str
 
     @classmethod
-    def by_token(cls, token_str):
-        """find enum by token string."""
+    def by_token(cls, token_str: str):
+        """Find enum by token string (e.g. '[PAD]' → SpecialToken.PAD)."""
         for tok in cls:
             if tok.token_str == token_str:
                 return tok
-        raise ValueError(f"unknown special token: {token_str}")
+        raise ValueError(f"Unknown special token: {token_str}")
 
     @classmethod
-    def all_tokens(cls):
-        """return list of token strings like ['[unk]'..]"""
+    def all_tokens_str(cls):
+        """Return list of token strings like ['[UNK]', '[CLS]', ...]."""
         return [tok.token_str for tok in cls]
 
     @classmethod
     def as_dict(cls):
-        """return mapping {token_str: id}"""
+        """Return mapping {token_str: id}."""
         return {tok.token_str: tok.value for tok in cls}
 
 
@@ -99,6 +91,10 @@ class BaseTokenizer(ABC):
         """Pad a batch of token ID sequences"""
         pass
 
+    def post_process(self):
+        """post prossessin happen  here text"""
+        pass
+
     def get_vocab_size(self) -> int:
         """Get vocabulary size (optional)"""
         raise NotImplementedError
@@ -108,11 +104,9 @@ class PersianHazmTokenizer(BaseTokenizer):
     def __init__(self, vocab=None):
         self.normalizer = Normalizer()
         self.vocab = vocab or {}
-        self.inv_vocab = {v: k for k, v in self.vocab.items()}
-
         for tok in SpecialToken:
             self.vocab.setdefault(tok.token_str, tok.value)
-            self.inv_vocab[tok.value] = tok.token_str
+        self.inv_vocab = {v: k for k, v in self.vocab.items()}
 
     @classmethod
     def required_args(cls):
@@ -136,7 +130,7 @@ class PersianHazmTokenizer(BaseTokenizer):
         min_freq : how aften tokenizer need to see a word to add it to vocab if it set to 2 : then each word need to seen at list 2 time
         """
         try:
-            self.tokenizer = self._build_vocab(texts, min_freq)
+            self._build_vocab(texts, min_freq)
             return True
         except Exception as e:
             print(f"Something wrong happened: {e}")
@@ -152,7 +146,7 @@ class PersianHazmTokenizer(BaseTokenizer):
                 freq[t] = freq.get(t, 0) + 1
 
         self.vocab = {tok.token_str: tok.value for tok in SpecialToken}
-        idx = len(SpecialToken.all_tokens())
+        idx = max(self.vocab.values()) + 1
 
         for t, c in sorted(freq.items(), key=lambda x: x[1], reverse=True):
             if c >= min_freq:
@@ -178,7 +172,7 @@ class PersianHazmTokenizer(BaseTokenizer):
         tokens = []
         for tid in token_ids:
             tok = self.inv_vocab.get(tid, SpecialToken.UNK.token_str)
-            if skip_special_tokens and tok in SpecialToken.all_tokens():
+            if skip_special_tokens and tok in SpecialToken.all_tokens_str():
                 continue
             tokens.append(tok)
         return " ".join(tokens)
@@ -190,6 +184,9 @@ class PersianHazmTokenizer(BaseTokenizer):
             padded_seq = seq + [SpecialToken.PAD.value] * (max_len - len(seq))
             padded.append(padded_seq)
         return padded
+
+    def post_process(self):
+        return super().post_process()
 
     def get_vocab_size(self):
         return len(self.vocab)
@@ -238,7 +235,7 @@ class EnglishTokenizer(BaseTokenizer):
         tokenizer.pre_tokenizer = Whitespace()
         trainer = WordPieceTrainer(
             vocab_size=vocab_size,
-            special_tokens=SpecialToken,
+            special_tokens=SpecialToken.all_tokens_str(),
         )
         tokenizer.train_from_iterator(texts, trainer=trainer)
         return tokenizer
@@ -253,14 +250,17 @@ class EnglishTokenizer(BaseTokenizer):
         if self.tokenizer is None:
             raise ValueError("Tokenizer not trained. Call train_by_text first.")
         encoding = self.tokenizer.encode(text)
+        ids = encoding.ids
 
         if add_special_tokens:
-            return encoding.ids
+            return ids
         else:
-            ids = encoding.ids
-            if ids and ids[0] == SpecialToken.CLS.value:
+            cls_id = self.tokenizer.token_to_id(SpecialToken.CLS.token_str)
+            sep_id = self.tokenizer.token_to_id(SpecialToken.SEP.token_str)
+
+            if cls_id is not None and ids and ids[0] == cls_id:
                 ids = ids[1:]
-            if ids and ids[-1] == SpecialToken.SEP.value:
+            if sep_id is not None and ids and ids[-1] == sep_id:
                 ids = ids[:-1]
             return ids
 
@@ -276,15 +276,30 @@ class EnglishTokenizer(BaseTokenizer):
         ]
         return padded
 
+    def post_process(self):
+
     def get_vocab_size(self):
         if self.tokenizer is None:
             raise ValueError("Tokenizer not trained. Call train_by_text first.")
-        return self.tokenizer.get_vocab_size()
+        try:
+            return self.tokenizer.get_vocab_size()
+        except Exception:
+            return len(self.tokenizer.get_vocab())
+
+
+class TokenizerType(Enum):
+    WORDPIECE = auto()
+    HAZM = auto()
+
+
+# keep the enum clean
+TOKENIZER_REGISTRY = {
+    TokenizerType.HAZM: PersianHazmTokenizer,
+    TokenizerType.WORDPIECE: EnglishTokenizer,
+}
 
 
 class TokenizerBuilder:
-    """ """
-
     def __init__(self):
         self._type: Optional[TokenizerType] = None
         self._params = {}
@@ -304,6 +319,8 @@ class TokenizerBuilder:
 
     def set_type(self, tokenizerType: TokenizerType):
         """specify which tokenizer to build"""
+        if self._type != tokenizerType:
+            self._params.clear()
         self._type = tokenizerType
         # this is the fluent interface , or method chaining , the core of builder pattern
         # https://dev.to/mandrewcito/fluent-interface-in-python-5b4n
@@ -349,32 +366,103 @@ def read_data(src_file, tgt_file):
     return pd.DataFrame({"src": src_data, "tgt": tgt_data})
 
 
-print("loading TEP data...")
-full_data = read_data(src_file, tgt_file)
+if __name__ == "__main__":
+    # === Load dataset ===
+    print("📘 Loading dataset...")
+    df = read_data(src_file, tgt_file)
+    print(f"Loaded {len(df)} sentence pairs.")
+    print(df.head(), "\n")
 
-print("Training English tokenizer...")
-eng_tokenizer = create_english_tokenizer(full_data["src"], vocab_size=30000)
+    # === Build tokenizers ===
+    print("🧠 Building tokenizers...")
 
-print("Building Persian vocab...")
-persian_vocab = build_persian_vocab(full_data["tgt"])
+    english_tokenizer = (
+        TokenizerBuilder()
+        .set_type(TokenizerType.WORDPIECE)
+        .set_params(
+            texts=df["src"].tolist(),
+            vocab_size=8000,
+            unk_token=SpecialToken.UNK.token_str,
+        )
+        .build()
+    )
 
-print("Initializing Persian tokenizer...")
-persian_tokenizer = PersianHazmTokenizer(vocab=persian_vocab)
+    persian_tokenizer = (
+        TokenizerBuilder()
+        .set_type(TokenizerType.HAZM)
+        .set_params(texts=df["tgt"].tolist(), min_freq=2)
+        .build()
+    )
 
+    print()
 
-sample_persian = "من به مدرسه می‌روم."
-sample_english = "I am going to school."
+    # === Check special token ID equality ===
+    print("🔍 Checking SpecialToken ID equality between tokenizers:")
+    for tok in SpecialToken:
+        eng_id = SpecialToken.as_dict()[tok.token_str]
+        per_id = SpecialToken.as_dict()[tok.token_str]
+        status = "✅ SAME" if eng_id == per_id else "❌ DIFFERENT"
+        print(f"{tok.token_str:6s} → English={eng_id}, Persian={per_id}  {status}")
+    print()
 
-persian_ids = persian_tokenizer.encode(sample_persian)
-print("Persian IDs:", persian_ids)
-print("Decoded Persian:", persian_tokenizer.decode(persian_ids))
+    # === Test encoding/decoding ===
+    test_sentences_en = [
+        "Hello, how are you?",
+        "The cat sat on the mat.",
+    ]
+    test_sentences_fa = [
+        "سلام، حالت چطوره؟",
+        "گربه روی فرش نشست.",
+    ]
 
-persian_ids = persian_tokenizer.encode(sample_persian)
-print("Original Persian IDs:", persian_ids)
-print("Original length:", len(persian_ids))
+    print("🧩 Encoding / Decoding tests:\n")
+    for s in test_sentences_en:
+        encoded = english_tokenizer.encode(s)
+        decoded = english_tokenizer.decode(encoded)
+        print(f"EN Original: {s}")
+        print(f"EN Encoded : {encoded}")
+        print(f"EN Decoded : {decoded}\n")
 
+    for s in test_sentences_fa:
+        encoded = persian_tokenizer.encode(s)
+        decoded = persian_tokenizer.decode(encoded)
+        print(f"FA Original: {s}")
+        print(f"FA Encoded : {encoded}")
+        print(f"FA Decoded : {decoded}\n")
 
-padded_ids = persian_tokenizer.pad([persian_ids], max_length=30)[0]
-print("Padded Persian IDs:", padded_ids)
-print("Padded length:", len(padded_ids))
-print("Decoded Persian (with padding):", persian_tokenizer.decode(padded_ids))
+    # === Check special tokens at start/end ===
+    print("🧱 Checking CLS/SEP token placement:")
+    for s in test_sentences_en:
+        encoded = english_tokenizer.encode(s)
+        print(
+            f"EN start={encoded[0]}, end={encoded[-1]} → CLS={SpecialToken.CLS.value}, SEP={SpecialToken.SEP.value}"
+        )
+    for s in test_sentences_fa:
+        encoded = persian_tokenizer.encode(s)
+        print(
+            f"FA start={encoded[0]}, end={encoded[-1]} → CLS={SpecialToken.CLS.value}, SEP={SpecialToken.SEP.value}"
+        )
+    print()
+
+    # === Test padding ===
+    print("🧩 Padding test:")
+    en_encoded = [english_tokenizer.encode(s) for s in test_sentences_en]
+    fa_encoded = [persian_tokenizer.encode(s) for s in test_sentences_fa]
+
+    en_padded = english_tokenizer.pad(en_encoded)
+    fa_padded = persian_tokenizer.pad(fa_encoded)
+
+    print("EN (padded):")
+    for seq in en_padded:
+        print(seq)
+    print("FA (padded):")
+    for seq in fa_padded:
+        print(seq)
+    print()
+
+    # === Summary ===
+    print("📊 Tokenizer Summary:")
+    print(f"English vocab size: {english_tokenizer.get_vocab_size()}")
+    print(f"Persian vocab size: {persian_tokenizer.get_vocab_size()}")
+    print(f"Special tokens used: {SpecialToken.all_tokens_str()}")
+    print("✅ All tests completed successfully.")
