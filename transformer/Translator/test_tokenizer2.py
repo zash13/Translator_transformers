@@ -252,12 +252,21 @@ class EnglishTokenizer(BaseTokenizer):
         encoding = self.tokenizer.encode(text)
         ids = encoding.ids
 
+        cls_id = self.tokenizer.token_to_id(SpecialToken.CLS.token_str)
+        sep_id = self.tokenizer.token_to_id(SpecialToken.SEP.token_str)
         if add_special_tokens:
+            if cls_id is None:
+                cls_id = SpecialToken.CLS.value
+            if sep_id is None:
+                sep_id = SpecialToken.SEP.value
+
+            if not ids or ids[0] != cls_id:
+                ids = [cls_id] + ids
+            if not ids or ids[-1] != sep_id:
+                ids = ids + [sep_id]
+
             return ids
         else:
-            cls_id = self.tokenizer.token_to_id(SpecialToken.CLS.token_str)
-            sep_id = self.tokenizer.token_to_id(SpecialToken.SEP.token_str)
-
             if cls_id is not None and ids and ids[0] == cls_id:
                 ids = ids[1:]
             if sep_id is not None and ids and ids[-1] == sep_id:
@@ -276,7 +285,11 @@ class EnglishTokenizer(BaseTokenizer):
         ]
         return padded
 
-    def post_process(self):
+    def get_id(self, token):
+        id_ = self.tokenizer.token_to_id(token)
+        if id_ is None:
+            id_ = self.tokenizer.token_to_id(SpecialToken.UNK.token_str)
+        return id_
 
     def get_vocab_size(self):
         if self.tokenizer is None:
@@ -417,7 +430,9 @@ if __name__ == "__main__":
 
     print("🧩 Encoding / Decoding tests:\n")
     for s in test_sentences_en:
-        encoded = english_tokenizer.encode(s)
+        encoded = english_tokenizer.encode(
+            s,
+        )
         decoded = english_tokenizer.decode(encoded)
         print(f"EN Original: {s}")
         print(f"EN Encoded : {encoded}")
