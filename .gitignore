@@ -37,7 +37,7 @@ build/
 .coverage
 htmlcov/
 
-
+preprocess_log.txt
 *.bak
 *.swp
 *~
