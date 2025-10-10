@@ -18,8 +18,11 @@ class TokenizerType(Enum):
     HAZM = auto()
 
 
-SPECIAL_TOKEN_IDS = {tok: i for i, tok in enumerate(SPECIAL_TOKENS)}
-SPECIAL_TOKENS = ["[UNK]", "[CLS]", "[PAD]", "[SEP]", "[MASK]"]
+# keep the enum clean
+TOKENIZER_REGISTRY = {
+    TokenizerType.HAZM: PersianHazmTokenizer,
+    TokenizerType.WORDPIECE: EnglishTokenizer,
+}
 
 
 class SpecialToken(Enum):
@@ -148,7 +151,7 @@ class PersianHazmTokenizer(BaseTokenizer):
             for t in tokens:
                 freq[t] = freq.get(t, 0) + 1
 
-        self.vocab = {tok.token_str: tok.value for tok in SpecialToken.all_tokens()}
+        self.vocab = {tok.token_str: tok.value for tok in SpecialToken}
         idx = len(SpecialToken.all_tokens())
 
         for t, c in sorted(freq.items(), key=lambda x: x[1], reverse=True):
@@ -235,7 +238,7 @@ class EnglishTokenizer(BaseTokenizer):
         tokenizer.pre_tokenizer = Whitespace()
         trainer = WordPieceTrainer(
             vocab_size=vocab_size,
-            special_tokens=SpecialToken.all_tokens(),
+            special_tokens=SpecialToken,
         )
         tokenizer.train_from_iterator(texts, trainer=trainer)
         return tokenizer
@@ -294,10 +297,10 @@ class TokenizerBuilder:
 
     @classmethod
     def show_requirements(cls, tokenizerType: TokenizerType):
-        if tokenizerType == TokenizerType.HAZM:
-            cls._print_args(PersianHazmTokenizer.required_args().items())
-        elif tokenizerType == TokenizerType.WORDPIECE:
-            cls._print_args(EnglishTokenizer.required_args().items())
+        tokenizer_cls = TOKENIZER_REGISTRY.get(tokenizerType)
+        if not tokenizer_cls:
+            raise ValueError(f"Unknown tokenizer type: {tokenizerType}")
+        cls._print_args(tokenizer_cls.required_args().items())
 
     def set_type(self, tokenizerType: TokenizerType):
         """specify which tokenizer to build"""
@@ -313,10 +316,10 @@ class TokenizerBuilder:
         return self
 
     def _choose_tokenizer(self):
-        if self._type == TokenizerType.HAZM:
-            self._tokenizer_cls = PersianHazmTokenizer
-        elif self._type == TokenizerType.WORDPIECE:
-            self._tokenizer_cls = EnglishTokenizer
+        try:
+            self._tokenizer_cls = TOKENIZER_REGISTRY[self._type]
+        except KeyError:
+            raise ValueError(f"Unknown tokenizer type: {self._type}")
         return self
 
     def build(self):
